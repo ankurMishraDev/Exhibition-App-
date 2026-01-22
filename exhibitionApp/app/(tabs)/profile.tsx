@@ -8,7 +8,9 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, BrandColors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
+import { ExhibitorAPI } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+import { ExhibitorProfile } from '@/types';
 
 interface UserProfile {
   id: string;
@@ -23,14 +25,23 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [exhibitorProfile, setExhibitorProfile] = useState<ExhibitorProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activityStats, setActivityStats] = useState({
+    totalBookings: 0,
+    totalSpent: 0,
+    activeBookings: 0,
+  });
 
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchExhibitorProfile();
+      fetchUserActivity();
     } else {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const fetchProfile = async () => {
@@ -99,9 +110,60 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   };
+  
+  const fetchExhibitorProfile = async () => {
+    if (!user) return;
+    
+    try {
+      const { data } = await ExhibitorAPI.getMyProfile(user.id);
+      if (data) {
+        setExhibitorProfile(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch exhibitor profile:', error);
+    }
+  };
+  
+  const fetchUserActivity = async () => {
+    if (!user) return;
+    
+    try {
+      const { data: bookings, error } = await supabase
+        .from('bookings')
+        .select('amount, status')
+        .eq('user_id', user.id);
+      
+      if (error) {
+        console.error('Failed to fetch bookings:', error);
+        return;
+      }
+      
+      if (bookings) {
+        const totalBookings = bookings.length;
+        const totalSpent = bookings
+          .filter(b => b.status === 'confirmed')
+          .reduce((sum, b) => sum + Number(b.amount), 0);
+        const activeBookings = bookings.filter(b => 
+          b.status === 'confirmed' || b.status === 'reserved'
+        ).length;
+        
+        setActivityStats({
+          totalBookings,
+          totalSpent,
+          activeBookings,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch user activity:', error);
+    }
+  };
 
   const handleEditProfile = () => {
-    Alert.alert('Edit Profile', 'Profile editing will be implemented soon!');
+    router.push('/edit-profile');
+  };
+  
+  const handleEditExhibitorProfile = () => {
+    router.push('/exhibitor-details');
   };
 
   const handleLogout = async () => {
@@ -149,14 +211,14 @@ export default function ProfileScreen() {
       icon: '🔔',
       title: 'Notifications',
       subtitle: 'Manage your notification preferences',
-      onPress: () => Alert.alert('Notifications', 'Notification settings coming soon!'),
+      onPress: () => router.push('/notifications'),
       color: BrandColors.orange[500],
     },
     {
       icon: '🛡️',
       title: 'Privacy & Security',
       subtitle: 'Account security settings',
-      onPress: () => Alert.alert('Privacy', 'Privacy settings coming soon!'),
+      onPress: () => router.push('/privacy-security'),
       color: BrandColors.green[500],
     },
     {
@@ -170,7 +232,7 @@ export default function ProfileScreen() {
       icon: '📋',
       title: 'Terms & Conditions',
       subtitle: 'Read our terms and policies',
-      onPress: () => Alert.alert('Terms', 'Terms & Conditions coming soon!'),
+      onPress: () => router.push('/terms-conditions'),
       color: BrandColors.gray[500],
     },
   ];
@@ -255,7 +317,7 @@ export default function ProfileScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <ThemedText style={[styles.statValue, { color: BrandColors.green[600] }]}>
-                3
+                {activityStats.totalBookings}
               </ThemedText>
               <ThemedText style={[styles.statLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
                 Total Bookings
@@ -264,13 +326,79 @@ export default function ProfileScreen() {
             
             <View style={styles.statItem}>
               <ThemedText style={[styles.statValue, { color: BrandColors.purple[600] }]}>
-                ₹65,000
+                ₹{activityStats.totalSpent.toLocaleString('en-IN')}
               </ThemedText>
               <ThemedText style={[styles.statLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
                 Total Spent
               </ThemedText>
             </View>
           </View>
+        </View>
+
+        {/* Exhibitor Profile Section */}
+        <View style={[styles.exhibitorCard, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+          <View style={styles.exhibitorHeader}>
+            <View>
+              <ThemedText type="subtitle" style={styles.exhibitorTitle}>
+                🏢 Exhibitor Profile
+              </ThemedText>
+              {exhibitorProfile?.is_completed && (
+                <View style={styles.completedBadge}>
+                  <ThemedText style={styles.completedBadgeText}>✓ Completed</ThemedText>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity
+              style={styles.editExhibitorButton}
+              onPress={handleEditExhibitorProfile}
+            >
+              <LinearGradient
+                colors={[BrandColors.green[500], BrandColors.green[600]]}
+                style={styles.editExhibitorButtonGradient}
+              >
+                <ThemedText style={styles.editExhibitorButtonText}>
+                  {exhibitorProfile ? 'Edit' : 'Complete'}
+                </ThemedText>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+          
+          {exhibitorProfile && exhibitorProfile.is_completed ? (
+            <View style={styles.exhibitorDetails}>
+              <View style={styles.exhibitorRow}>
+                <ThemedText style={[styles.exhibitorLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
+                  Company:
+                </ThemedText>
+                <ThemedText style={styles.exhibitorValue}>
+                  {exhibitorProfile.company_name}
+                </ThemedText>
+              </View>
+              <View style={styles.exhibitorRow}>
+                <ThemedText style={[styles.exhibitorLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
+                  Domain:
+                </ThemedText>
+                <ThemedText style={styles.exhibitorValue}>
+                  {exhibitorProfile.company_domain}
+                </ThemedText>
+              </View>
+              {exhibitorProfile.company_website && (
+                <View style={styles.exhibitorRow}>
+                  <ThemedText style={[styles.exhibitorLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
+                    Website:
+                  </ThemedText>
+                  <ThemedText style={[styles.exhibitorValue, { color: BrandColors.purple[600] }]}>
+                    {exhibitorProfile.company_website}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.incompleteContainer}>
+              <ThemedText style={[styles.incompleteText, { color: Colors[colorScheme ?? 'light'].icon }]}>
+                Complete your exhibitor profile to start booking stalls at events.
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Menu Items */}
@@ -298,7 +426,7 @@ export default function ProfileScreen() {
                 </View>
                 
                 <ThemedText style={[styles.chevron, { color: Colors[colorScheme ?? 'light'].icon }]}>
-                  >
+                  {'>'}
                 </ThemedText>
               </View>
             </TouchableOpacity>
@@ -370,6 +498,11 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   statsCard: {
     marginBottom: 24,
@@ -452,5 +585,70 @@ const styles = StyleSheet.create({
   logoutText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  exhibitorCard: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BrandColors.green[200],
+  },
+  exhibitorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  exhibitorTitle: {
+    marginBottom: 4,
+  },
+  completedBadge: {
+    backgroundColor: BrandColors.green[100],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  completedBadgeText: {
+    color: BrandColors.green[700],
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  editExhibitorButton: {
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  editExhibitorButtonGradient: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  editExhibitorButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  exhibitorDetails: {
+    gap: 12,
+  },
+  exhibitorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  exhibitorLabel: {
+    fontSize: 14,
+    width: 80,
+    fontWeight: '500',
+  },
+  exhibitorValue: {
+    fontSize: 14,
+    flex: 1,
+  },
+  incompleteContainer: {
+    paddingVertical: 8,
+  },
+  incompleteText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

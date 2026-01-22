@@ -1,6 +1,6 @@
 import { StorageUtils } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
-import { ApiResponse, Booking, Event, Payment, Stall } from '@/types';
+import { ApiResponse, Booking, Event, Payment, Stall, ExhibitorProfile, ExhibitorProfileForm } from '@/types';
 
 // Events API
 export const EventsAPI = {
@@ -405,10 +405,169 @@ export const RealtimeAPI = {
   },
 };
 
+// Exhibitor Profiles API
+export const ExhibitorAPI = {
+  // Get current user's exhibitor profile
+  getMyProfile: async (userId: string): Promise<ApiResponse<ExhibitorProfile>> => {
+    try {
+      if (!userId) {
+        return { error: 'User ID is required' };
+      }
+
+      const { data, error } = await supabase
+        .from('exhibitor_profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No profile exists yet - not an error, just return null
+          return { data: null as any };
+        }
+        return { error: error.message };
+      }
+
+      return { data };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  },
+
+  // Create exhibitor profile
+  createProfile: async (userId: string, profile: ExhibitorProfileForm): Promise<ApiResponse<ExhibitorProfile>> => {
+    try {
+      if (!userId) {
+        return { error: 'User ID is required' };
+      }
+
+      const { data, error } = await supabase
+        .from('exhibitor_profiles')
+        .insert({
+          user_id: userId,
+          ...profile,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { data };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  },
+
+  // Update exhibitor profile
+  updateProfile: async (userId: string, profile: Partial<ExhibitorProfileForm>): Promise<ApiResponse<ExhibitorProfile>> => {
+    try {
+      if (!userId) {
+        return { error: 'User ID is required' };
+      }
+
+      const { data, error } = await supabase
+        .from('exhibitor_profiles')
+        .update(profile)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { data };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  },
+
+  // Check if user can book (has completed profile)
+  canBookStall: async (userId: string): Promise<ApiResponse<boolean>> => {
+    try {
+      if (!userId) {
+        return { data: false };
+      }
+
+      const { data, error } = await supabase.rpc('can_user_book_stall', {
+        p_user_id: userId,
+      });
+
+      if (error) {
+        return { error: error.message };
+      }
+
+      return { data: data || false };
+    } catch (error: any) {
+      return { error: error.message, data: false };
+    }
+  },
+
+  // Upload company logo
+  uploadLogo: async (userId: string, file: File | Blob, fileExt: string): Promise<ApiResponse<string>> => {
+    try {
+      if (!userId) {
+        return { error: 'User ID is required' };
+      }
+
+      const fileName = `${userId}_${Date.now()}.${fileExt}`;
+      const filePath = `${userId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('exhibitor-logos')
+        .upload(filePath, file, {
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { error: uploadError.message };
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('exhibitor-logos')
+        .getPublicUrl(filePath);
+
+      return { data: publicUrlData.publicUrl };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  },
+
+  // Get exhibitor info by user ID (for displaying booked stall details)
+  getExhibitorByUserId: async (userId: string): Promise<ApiResponse<ExhibitorProfile>> => {
+    try {
+      if (!userId) {
+        return { error: 'User ID is required' };
+      }
+
+      const { data, error } = await supabase
+        .from('exhibitor_profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_completed', true)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return { data: null as any };
+        }
+        return { error: error.message };
+      }
+
+      return { data };
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  },
+};
+
 // Export all APIs
 export const API = {
   Events: EventsAPI,
   Bookings: BookingsAPI,
   Payments: PaymentsAPI,
   Realtime: RealtimeAPI,
+  Exhibitor: ExhibitorAPI,
 };

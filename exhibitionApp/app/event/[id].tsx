@@ -123,12 +123,12 @@ export default function EventDetailScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView  showsVerticalScrollIndicator={false}>
         {/* Hero Image */}
         {event.image_url && (
           <Image
             source={{ uri: event.image_url }}
-            style={styles.heroImage}
+            style={[styles.heroImage]}
             contentFit="cover"
           />
         )}
@@ -144,7 +144,7 @@ export default function EventDetailScreen() {
         <View style={styles.content}>
           {/* Event Title */}
           <View style={styles.titleSection}>
-            <ThemedText type="title" style={styles.eventTitle}>
+            <ThemedText type="title" style={[styles.eventTitle, { marginTop: 20 }]}>
               {event.title}
             </ThemedText>
             
@@ -317,10 +317,6 @@ const styles = StyleSheet.create({
   loadingText: {
     color: 'white',
     fontSize: 18,
-  },
-  content: {
-    padding: 20,
-    paddingTop: 40,
   },
   titleSection: {
     marginBottom: 20,

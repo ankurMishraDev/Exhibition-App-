@@ -1,30 +1,47 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 
 import { PaymentModal, SuccessModal } from '@/components/BookingModals';
-import SkiaSeatMap from '@/components/SkiaSeatMap';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BrandColors, Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/hooks/useAuth';
-import { EventsAPI } from '@/lib/api';
+import { EventsAPI, ExhibitorAPI } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { Event, Stall } from '@/types';
+import hallLayoutsData from '@/constants/hallLayouts.json';
 
 export default function BookingScreen() {
   const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
   const { user } = useAuth();
-  const { eventId } = useLocalSearchParams<{ eventId: string }>();
+  const { 
+    eventId, 
+    selectedStallId, 
+    selectedStallNumber, 
+    selectedStallPrice,
+    selectedHallId: returnedHallId 
+  } = useLocalSearchParams<{ 
+    eventId: string; 
+    selectedStallId?: string;
+    selectedStallNumber?: string;
+    selectedStallPrice?: string;
+    selectedHallId?: string;
+  }>();
   
   const [event, setEvent] = useState<Event | null>(null);
-  const [stalls, setStalls] = useState<Stall[]>([]);
   const [selectedStall, setSelectedStall] = useState<Stall | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stallsReady, setStallsReady] = useState(false);
+  
+  // Hall selection
+  const [selectedHall, setSelectedHall] = useState<string>('H2');
+  const [availableHalls, setAvailableHalls] = useState<string[]>([]);
   
   // Payment modal states
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
@@ -36,12 +53,11 @@ export default function BookingScreen() {
     amount: number;
   } | null>(null);
 
-  const fetchEventAndStalls = useCallback(async () => {
+  const fetchEventDetails = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch event details
       const eventResponse = await EventsAPI.getEvent(eventId);
       if (eventResponse.error) {
         setError(eventResponse.error);
@@ -53,31 +69,13 @@ export default function BookingScreen() {
         setEvent(eventResponse.data);
       }
 
-      // Fetch stalls for this event
+      // Fetch stalls to get available halls
       const stallsResponse = await EventsAPI.getEventStalls(eventId);
-      if (stallsResponse.error) {
-        setError(stallsResponse.error);
-        Alert.alert('Error', stallsResponse.message || 'Failed to load stalls');
-        setStallsReady(false);
-      } else if (stallsResponse.data) {
-        // Validate stalls data before setting
-        const validStalls = stallsResponse.data.filter(stall => 
-          stall &&
-          stall.id &&
-          typeof stall.position_x === 'number' &&
-          typeof stall.position_y === 'number' &&
-          !isNaN(stall.position_x) &&
-          !isNaN(stall.position_y)
-        );
-
-        if (validStalls.length > 0) {
-          console.log('[BookingScreen] Setting stalls ready:', validStalls.length, 'valid stalls');
-          setStalls(validStalls);
-          setStallsReady(true);
-        } else {
-          console.log('[BookingScreen] No valid stalls found');
-          setError('No valid stalls found for this event');
-          setStallsReady(false);
+      if (stallsResponse.data) {
+        const hallIds = [...new Set(stallsResponse.data.map(s => s.hall_id).filter(Boolean))] as string[];
+        setAvailableHalls(hallIds);
+        if (hallIds.length > 0 && !returnedHallId) {
+          setSelectedHall(hallIds[0]);
         }
       }
     } catch (err: any) {
@@ -86,7 +84,33 @@ export default function BookingScreen() {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, returnedHallId]);
+
+  // Handle selected stall from hall-selection page
+  useEffect(() => {
+    if (selectedStallId && selectedStallNumber && selectedStallPrice) {
+      const fetchStallDetails = async () => {
+        const { data, error } = await supabase
+          .from('stalls')
+          .select('*')
+          .eq('id', selectedStallId)
+          .single();
+        
+        if (data && !error) {
+          setSelectedStall(data);
+          if (data.hall_id) {
+            setSelectedHall(data.hall_id);
+          }
+        }
+      };
+      fetchStallDetails();
+    }
+    
+    // Update selected hall if returned from hall-selection
+    if (returnedHallId) {
+      setSelectedHall(returnedHallId);
+    }
+  }, [selectedStallId, selectedStallNumber, selectedStallPrice, returnedHallId]);
 
   useEffect(() => {
     if (!user) {
@@ -96,11 +120,10 @@ export default function BookingScreen() {
       return;
     }
 
-    fetchEventAndStalls();
+    fetchEventDetails();
 
-    // Setup Realtime subscription for stall updates
     const channel = supabase
-      .channel(`stalls-${eventId}`)
+      .channel(`booking-stalls-${eventId}`)
       .on(
         'postgres_changes',
         {
@@ -110,18 +133,6 @@ export default function BookingScreen() {
           filter: `event_id=eq.${eventId}`,
         },
         (payload) => {
-          console.log('[Realtime] Stall update:', payload);
-          
-          // Update local stall status
-          setStalls(prevStalls =>
-            prevStalls.map(stall =>
-              stall.id === payload.new.id
-                ? { ...stall, status: payload.new.status }
-                : stall
-            )
-          );
-
-          // Clear selection if the selected stall was booked by someone else
           setSelectedStall(prev => {
             if (prev?.id === payload.new.id && payload.new.status !== 'available') {
               Alert.alert(
@@ -140,17 +151,43 @@ export default function BookingScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [fetchEventAndStalls, user, eventId]);
+  }, [fetchEventDetails, user, eventId]);
 
-  const handleStallSelect = (stall: Stall) => {
-    if (stall.status === 'available') {
-      setSelectedStall(stall);
-    }
+  const handleSelectStall = () => {
+    if (!event) return;
+    router.push({
+      pathname: '/hall-selection/[eventId]',
+      params: { 
+        eventId: event.id,
+        hallId: selectedHall 
+      }
+    } as any);
   };
 
-  const handleProceedToPayment = () => {
-    if (!selectedStall || !event) return;
-    setPaymentModalVisible(true);
+  const handleProceedToPayment = async () => {
+    if (!selectedStall || !event || !user) return;
+    
+    try {
+      const response = await ExhibitorAPI.canBookStall(user.id);
+      const canBook = response.data;
+      
+      if (!canBook) {
+        Alert.alert(
+          'Complete Your Profile',
+          'Please complete your exhibitor profile before booking a stall.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Complete Profile', onPress: () => router.push('/exhibitor-details') }
+          ]
+        );
+        return;
+      }
+      
+      setPaymentModalVisible(true);
+    } catch (error) {
+      console.error('Failed to check profile:', error);
+      Alert.alert('Error', 'Failed to verify profile. Please try again.');
+    }
   };
 
   const handlePaymentConfirm = async () => {
@@ -159,12 +196,9 @@ export default function BookingScreen() {
     try {
       setProcessingPayment(true);
 
-      // Mock payment processing - 2 second delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Call create_booking_with_lock RPC function
-      // Note: This function returns UUID directly, not {booking_id: uuid}
-      const { data: bookingId, error: bookingError } = await supabase.rpc('create_booking_with_lock', {
+      const { data: bookingResponse, error: bookingError } = await supabase.rpc('create_booking_with_lock', {
         p_event_id: event.id,
         p_stall_id: selectedStall.id,
         p_user_id: user.id,
@@ -175,71 +209,41 @@ export default function BookingScreen() {
         throw new Error(bookingError.message || 'Failed to create booking');
       }
 
+      if (!bookingResponse || !bookingResponse.success) {
+        throw new Error(bookingResponse?.error || 'Booking creation failed');
+      }
+
+      const bookingId = bookingResponse.booking_id;
+      
       if (!bookingId) {
         throw new Error('Booking created but no ID returned');
       }
 
-      console.log('[Payment] Booking created:', bookingId);
-
-      // Update booking status to confirmed
-      const { error: updateBookingError } = await supabase
+      await supabase
         .from('bookings')
-        .update({ 
-          status: 'confirmed',
-          payment_status: 'paid'
-        })
+        .update({ status: 'confirmed', payment_status: 'paid' })
         .eq('id', bookingId);
 
-      if (updateBookingError) {
-        console.error('Failed to update booking status:', updateBookingError);
-      }
-
-      // Update stall status to booked (RPC sets it to 'reserved')
-      const { error: updateStallError } = await supabase
+      await supabase
         .from('stalls')
         .update({ status: 'booked' })
         .eq('id', selectedStall.id);
 
-      if (updateStallError) {
-        console.error('Failed to update stall status:', updateStallError);
-      }
-
-      // Create mock payment record
-      const paymentId = `fake_pay_${Date.now()}`;
-      const { error: paymentError } = await supabase.from('payments').insert({
-        id: paymentId,
+      await supabase.from('payments').insert({
         booking_id: bookingId,
         user_id: user.id,
         amount: selectedStall.price,
         currency: 'INR',
         method: 'mock',
         status: 'captured',
-        razorpay_payment_id: paymentId,
-        razorpay_order_id: `fake_order_${Date.now()}`,
       });
 
-      if (paymentError) {
-        console.error('Payment record creation error:', paymentError);
-        // Don't fail the whole booking for payment record error
-      }
-
-      // Store booking details for success modal
       setBookingDetails({
         bookingId: bookingId,
         stallNumber: selectedStall.stall_number,
         amount: selectedStall.price,
       });
 
-      // Update local stall status
-      setStalls(prevStalls => 
-        prevStalls.map(s => 
-          s.id === selectedStall.id 
-            ? { ...s, status: 'booked' as const } 
-            : s
-        )
-      );
-
-      // Close payment modal, show success modal
       setPaymentModalVisible(false);
       setProcessingPayment(false);
       setSelectedStall(null);
@@ -248,45 +252,26 @@ export default function BookingScreen() {
     } catch (err: any) {
       setProcessingPayment(false);
       setPaymentModalVisible(false);
-      
-      Alert.alert(
-        'Booking Failed',
-        err.message || 'An error occurred while processing your booking. Please try again.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Booking Failed', err.message || 'An error occurred. Please try again.', [{ text: 'OK' }]);
     }
   };
 
-  const handlePaymentCancel = () => {
-    setPaymentModalVisible(false);
-  };
+  const handlePaymentCancel = () => setPaymentModalVisible(false);
+  const handleSuccessClose = () => { setSuccessModalVisible(false); setBookingDetails(null); };
+  const handleViewBookings = () => { setSuccessModalVisible(false); setBookingDetails(null); router.push('/(tabs)/bookings'); };
 
-  const handleSuccessClose = () => {
-    setSuccessModalVisible(false);
-    setBookingDetails(null);
-  };
+  const formatPrice = (price: number) => `₹${price.toLocaleString('en-IN')}`;
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
-  const handleViewBookings = () => {
-    setSuccessModalVisible(false);
-    setBookingDetails(null);
-    router.push('/(tabs)/bookings');
+  const getHallName = (hallId: string) => {
+    const hall = hallLayoutsData.halls.find(h => h.id === hallId);
+    return hall?.name || hallId;
   };
-
-  const formatPrice = (price: number) => {
-    return `₹${price.toLocaleString('en-IN')}`;
-  };
-
-  console.log('[BookingScreen] Render state:', { 
-    loading, 
-    error: !!error, 
-    stallsReady, 
-    stallsCount: stalls.length,
-    hasEvent: !!event 
-  });
 
   if (!user) {
     return (
       <ThemedView style={styles.container}>
+        <Stack.Screen options={{ headerShown: false }} />
         <ThemedText>Please login to access booking</ThemedText>
       </ThemedView>
     );
@@ -295,41 +280,22 @@ export default function BookingScreen() {
   if (loading) {
     return (
       <ThemedView style={styles.container}>
-        <LinearGradient
-          colors={[BrandColors.green[600], BrandColors.green[800]]}
-          style={styles.loadingHeader}
-        >
-          <ThemedText style={styles.loadingText}>Loading stall layout...</ThemedText>
-        </LinearGradient>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingContainer}>
+          <ThemedText>Loading event details...</ThemedText>
+        </View>
       </ThemedView>
     );
   }
 
-  if (error) {
+  if (error || !event) {
     return (
       <ThemedView style={styles.container}>
-        <LinearGradient
-          colors={[BrandColors.orange[600], BrandColors.orange[800]]}
-          style={styles.header}
-        >
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <ThemedText style={styles.backButtonText}>← Back</ThemedText>
-          </TouchableOpacity>
-          <ThemedText type="title" style={styles.headerTitle}>
-            Error Loading Event
-          </ThemedText>
-        </LinearGradient>
+        <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.errorContainer}>
-          <ThemedText style={styles.errorIcon}>⚠️</ThemedText>
-          <ThemedText style={styles.errorTitle}>{error}</ThemedText>
-          <TouchableOpacity
-            style={[styles.retryButton, { backgroundColor: BrandColors.green[600] }]}
-            onPress={fetchEventAndStalls}
-          >
-            <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+          <ThemedText style={styles.errorText}>{error || 'Event not found'}</ThemedText>
+          <TouchableOpacity style={styles.retryBtn} onPress={fetchEventDetails}>
+            <ThemedText style={{ color: 'white', fontWeight: '600' }}>Retry</ThemedText>
           </TouchableOpacity>
         </View>
       </ThemedView>
@@ -338,115 +304,167 @@ export default function BookingScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <Stack.Screen options={{ headerShown: false }} />
+      
       {/* Header */}
-      <LinearGradient
-        colors={[BrandColors.green[600], BrandColors.green[800]]}
-        style={styles.header}
-      >
-       
-        
-        <ThemedText type="title" style={styles.headerTitle}>
-          Select Your Stall
-        </ThemedText>
-        <ThemedText style={[styles.headerSubtitle, { color: BrandColors.green[100] }]}>
-          {event?.title}
-        </ThemedText>
-      </LinearGradient>
+      <View style={[styles.header, { backgroundColor: isDark ? '#111' : '#dcfce7' }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color={isDark ? '#fff' : '#000'} />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <ThemedText style={styles.headerTitle}>Book Your Stall</ThemedText>
+          <ThemedText style={[styles.headerSubtitle, { color: isDark ? '#888' : '#666' }]}>
+            {event?.title}
+          </ThemedText>
+        </View>
+        <View style={{ width: 40 }} />
+      </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Seat Map */}
-        <View style={styles.seatMapSection}>
-          {stallsReady && stalls.length > 0 ? (
-            <SkiaSeatMap
-              key={`stalls-${stalls.length}-${stallsReady}`}
-              eventId={eventId}
-              stalls={stalls}
-              onStallSelect={handleStallSelect}
-              selectedStallId={selectedStall?.id}
-            />
-          ) : (
-            <View style={styles.noStallsContainer}>
-              <ThemedText style={styles.noStallsIcon}>🎫</ThemedText>
-              <ThemedText style={styles.noStallsTitle}>No Stalls Available</ThemedText>
-              <ThemedText style={styles.noStallsText}>
-                {error || 'Stall layout data is not available for this event.'}
-              </ThemedText>
-            </View>
-          )}
+        {/* Event Info Card */}
+        <View style={[styles.card, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+          <ThemedText style={styles.cardTitle}>📅 Event Details</ThemedText>
+          
+          <View style={styles.infoRow}>
+            <ThemedText style={styles.infoLabel}>Location</ThemedText>
+            <ThemedText style={styles.infoValue}>{event.location}</ThemedText>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <ThemedText style={styles.infoLabel}>Date</ThemedText>
+            <ThemedText style={styles.infoValue}>
+              {formatDate(event.start_date)} - {formatDate(event.end_date)}
+            </ThemedText>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <ThemedText style={styles.infoLabel}>Available Stalls</ThemedText>
+            <ThemedText style={[styles.infoValue, { color: BrandColors.green[600], fontWeight: '700' }]}>
+              {event.available_stalls} / {event.total_stalls}
+            </ThemedText>
+          </View>
         </View>
 
-        {/* Selected Stall Details */}
+        {/* Hall Selection Card */}
+        <View style={[styles.card, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+          <ThemedText style={styles.cardTitle}>🏛️ Select Hall</ThemedText>
+          <ThemedText style={[styles.cardDescription, { color: isDark ? '#888' : '#666' }]}>
+            Choose a hall to view available stalls
+          </ThemedText>
+          
+          {availableHalls.length > 0 && (
+            <View style={[styles.pickerContainer, { borderColor: isDark ? '#333' : '#E0E0E0' }]}>
+              <Picker
+                selectedValue={selectedHall}
+                onValueChange={(value) => {
+                  setSelectedHall(value);
+                  setSelectedStall(null);
+                }}
+                style={[styles.picker, { color: isDark ? '#fff' : '#000' }]}
+                dropdownIconColor={isDark ? '#fff' : '#000'}
+              >
+                {availableHalls.map((hallId) => (
+                  <Picker.Item key={hallId} label={getHallName(hallId)} value={hallId} />
+                ))}
+              </Picker>
+            </View>
+          )}
+          
+          <TouchableOpacity style={styles.viewLayoutBtn} onPress={handleSelectStall}>
+            <LinearGradient
+              colors={[BrandColors.purple[500], BrandColors.purple[700]]}
+              style={styles.viewLayoutBtnGradient}
+            >
+              <Ionicons name="grid-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <ThemedText style={styles.viewLayoutBtnText}>
+                {selectedStall ? 'Change Stall Selection' : 'View Hall Layout & Select Stall'}
+              </ThemedText>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* Selected Stall Card */}
         {selectedStall && (
-          <View style={[styles.selectedStallCard, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
-            <View style={styles.stallHeader}>
-              <ThemedText type="subtitle">Selected Stall</ThemedText>
+          <View style={[styles.card, styles.selectedCard, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+            <View style={styles.selectedHeader}>
+              <ThemedText style={styles.cardTitle}>✅ Selected Stall</ThemedText>
               <TouchableOpacity onPress={() => setSelectedStall(null)}>
-                <ThemedText style={[styles.clearSelection, { color: BrandColors.orange[600] }]}>
-                  Clear Selection
-                </ThemedText>
+                <ThemedText style={{ color: BrandColors.orange[600], fontWeight: '500' }}>Clear</ThemedText>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.stallDetails}>
-              <View style={styles.stallDetailRow}>
-                <ThemedText style={[styles.detailLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
-                  Stall Number
-                </ThemedText>
-                <ThemedText style={[styles.detailValue, { color: BrandColors.purple[600], fontWeight: '600' }]}>
+            <View style={styles.stallInfoGrid}>
+              <View style={styles.stallInfoItem}>
+                <ThemedText style={styles.stallInfoLabel}>Stall Number</ThemedText>
+                <ThemedText style={[styles.stallInfoValue, { color: BrandColors.purple[600] }]}>
                   {selectedStall.stall_number}
                 </ThemedText>
               </View>
-
-              <View style={styles.stallDetailRow}>
-                <ThemedText style={[styles.detailLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
-                  Price
-                </ThemedText>
-                <ThemedText style={[styles.detailValue, { color: BrandColors.green[600], fontWeight: '600' }]}>
+              <View style={styles.stallInfoItem}>
+                <ThemedText style={styles.stallInfoLabel}>Hall</ThemedText>
+                <ThemedText style={styles.stallInfoValue}>{selectedStall.hall_id}</ThemedText>
+              </View>
+              <View style={styles.stallInfoItem}>
+                <ThemedText style={styles.stallInfoLabel}>Price</ThemedText>
+                <ThemedText style={[styles.stallInfoValue, { color: BrandColors.green[600] }]}>
                   {formatPrice(selectedStall.price)}
                 </ThemedText>
               </View>
+            </View>
 
-              {selectedStall.features && (
-                <View style={styles.featuresSection}>
-                  <ThemedText style={[styles.detailLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
-                    Features
-                  </ThemedText>
-                  <View style={styles.features}>
-                    {selectedStall.features.map((feature, index) => (
-                      <View key={index} style={[styles.featureTag, { backgroundColor: BrandColors.green[100] }]}>
-                        <ThemedText style={[styles.featureText, { color: BrandColors.green[700] }]}>
-                          {feature}
-                        </ThemedText>
-                      </View>
-                    ))}
-                  </View>
+            {selectedStall.features && selectedStall.features.length > 0 && (
+              <View style={styles.featuresContainer}>
+                <ThemedText style={styles.stallInfoLabel}>Features</ThemedText>
+                <View style={styles.featuresList}>
+                  {selectedStall.features.map((feature, index) => (
+                    <View key={index} style={[styles.featureTag, { backgroundColor: BrandColors.green[100] }]}>
+                      <ThemedText style={{ color: BrandColors.green[700], fontSize: 12 }}>{feature}</ThemedText>
+                    </View>
+                  ))}
                 </View>
-              )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Pricing Summary */}
+        {selectedStall && (
+          <View style={[styles.card, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+            <ThemedText style={styles.cardTitle}>💰 Payment Summary</ThemedText>
+            
+            <View style={styles.pricingRow}>
+              <ThemedText style={styles.pricingLabel}>Stall Price</ThemedText>
+              <ThemedText style={styles.pricingValue}>{formatPrice(selectedStall.price)}</ThemedText>
+            </View>
+            
+            <View style={styles.pricingRow}>
+              <ThemedText style={styles.pricingLabel}>Taxes & Fees</ThemedText>
+              <ThemedText style={styles.pricingValue}>Included</ThemedText>
+            </View>
+            
+            <View style={[styles.pricingRow, styles.totalRow]}>
+              <ThemedText style={styles.totalLabel}>Total Amount</ThemedText>
+              <ThemedText style={styles.totalValue}>{formatPrice(selectedStall.price)}</ThemedText>
             </View>
           </View>
         )}
+
+        <View style={{ height: 120 }} />
       </ScrollView>
 
-      {/* Fixed Bottom Button */}
+      {/* Bottom Button */}
       {selectedStall && (
-        <View style={[styles.bottomButton, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
-          <TouchableOpacity
-            style={[styles.proceedButton, { backgroundColor: BrandColors.green[600] }]}
-            onPress={handleProceedToPayment}
-          >
-            <LinearGradient
-              colors={[BrandColors.green[500], BrandColors.green[700]]}
-              style={styles.proceedButtonGradient}
-            >
-              <ThemedText style={styles.proceedButtonText}>
-                Proceed to Payment - {formatPrice(selectedStall.price)}
+        <View style={[styles.bottomBar, { backgroundColor: Colors[colorScheme ?? 'light'].background }]}>
+          <TouchableOpacity style={styles.proceedBtn} onPress={handleProceedToPayment}>
+            <LinearGradient colors={[BrandColors.green[500], BrandColors.green[700]]} style={styles.proceedBtnGradient}>
+              <ThemedText style={styles.proceedBtnText}>
+                Proceed to Payment • {formatPrice(selectedStall.price)}
               </ThemedText>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Payment Confirmation Modal */}
       <PaymentModal
         visible={paymentModalVisible}
         amount={selectedStall?.price || 0}
@@ -456,7 +474,6 @@ export default function BookingScreen() {
         processing={processingPayment}
       />
 
-      {/* Success Modal */}
       <SuccessModal
         visible={successModalVisible}
         bookingId={bookingDetails?.bookingId || ''}
@@ -471,167 +488,79 @@ export default function BookingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
   header: {
-    paddingTop: 60,
-    paddingBottom: 30,
-    paddingHorizontal: 20,
-  },
-  backButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  backButtonText: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  headerTitle: {
-    color: 'white',
-    marginBottom: 8,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    opacity: 0.9,
-  },
-  loadingHeader: {
-    height: 200,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
   },
-  loadingText: {
-    color: 'white',
-    fontSize: 18,
-  },
-  content: {
-    flex: 1,
-  },
-  seatMapSection: {
-    backgroundColor: 'white',
-  },
-  selectedStallCard: {
-    margin: 20,
+  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerContent: { flex: 1, alignItems: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
+  headerSubtitle: { fontSize: 13, marginTop: 2 },
+  content: { flex: 1, padding: 16 },
+  card: {
     borderRadius: 16,
     padding: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  stallHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  clearSelection: {
-    fontSize: 14,
-    fontWeight: '500',
+  selectedCard: { borderWidth: 2, borderColor: BrandColors.green[400] },
+  cardTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  cardDescription: { fontSize: 13, marginBottom: 12 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  infoLabel: { fontSize: 14, color: '#666' },
+  infoValue: { fontSize: 14, fontWeight: '500' },
+  pickerContainer: {
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 16,
+    overflow: 'hidden',
   },
-  stallDetails: {
-    gap: 12,
-  },
-  stallDetailRow: {
+  picker: { height: 50 },
+  viewLayoutBtn: { borderRadius: 12, overflow: 'hidden' },
+  viewLayoutBtnGradient: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
   },
-  detailLabel: {
-    fontSize: 14,
-  },
-  detailValue: {
-    fontSize: 16,
-  },
-  featuresSection: {
-    marginTop: 8,
-  },
-  features: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  featureTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  featureText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  bottomButton: {
-    padding: 20,
-    paddingBottom: 40,
+  viewLayoutBtnText: { color: 'white', fontSize: 15, fontWeight: '600' },
+  selectedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  stallInfoGrid: { flexDirection: 'row', justifyContent: 'space-between' },
+  stallInfoItem: { alignItems: 'center' },
+  stallInfoLabel: { fontSize: 12, color: '#666', marginBottom: 4 },
+  stallInfoValue: { fontSize: 16, fontWeight: '700' },
+  featuresContainer: { marginTop: 16 },
+  featuresList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  featureTag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 },
+  pricingRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  pricingLabel: { fontSize: 14, color: '#666' },
+  pricingValue: { fontSize: 14, fontWeight: '500' },
+  totalRow: { borderTopWidth: 1, borderTopColor: '#E5E5E5', paddingTop: 12, marginTop: 4 },
+  totalLabel: { fontSize: 16, fontWeight: '600' },
+  totalValue: { fontSize: 22, fontWeight: '800', color: BrandColors.green[700] },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    paddingBottom: 32,
     borderTopWidth: 1,
     borderTopColor: '#E5E5E5',
   },
-  proceedButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  proceedButtonGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  proceedButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
-  },
-  errorIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  errorTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 24,
-    color: BrandColors.orange[600],
-  },
-  retryButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  noStallsContainer: {
-    padding: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 400,
-  },
-  noStallsIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  noStallsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  noStallsText: {
-    fontSize: 14,
-    textAlign: 'center',
-    opacity: 0.6,
-    lineHeight: 20,
-  },
+  proceedBtn: { borderRadius: 14, overflow: 'hidden' },
+  proceedBtnGradient: { paddingVertical: 16, alignItems: 'center' },
+  proceedBtnText: { color: 'white', fontSize: 16, fontWeight: '600' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  errorText: { fontSize: 16, marginBottom: 16, textAlign: 'center' },
+  retryBtn: { backgroundColor: BrandColors.green[600], paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 },
 });

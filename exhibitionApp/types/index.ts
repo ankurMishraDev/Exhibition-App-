@@ -27,6 +27,7 @@ export interface Event {
 export interface Stall {
   id: string;
   event_id: string;
+  hall_id?: string;
   stall_number: string;
   position_x: number;
   position_y: number;
@@ -35,6 +36,8 @@ export interface Stall {
   status: 'available' | 'reserved' | 'booked' | 'disabled';
   price: number;
   features?: string[];
+  company_name?: string;
+  company_logo_url?: string;
   created_at: string;
   updated_at: string;
 }
@@ -50,6 +53,7 @@ export interface Booking {
   amount: number;
   booking_date: string;
   expires_at?: string;
+  exhibitor_snapshot?: ExhibitorSnapshot;
   created_at: string;
   updated_at: string;
   
@@ -74,6 +78,31 @@ export interface Payment {
   
   // Relations
   booking?: Booking;
+}
+
+export interface ExhibitorProfile {
+  id: string;
+  user_id: string;
+  company_name: string;
+  company_domain: string;
+  company_website?: string;
+  company_logo_url?: string;
+  contact_number: string;
+  executive_name: string;
+  executive_designation: string;
+  is_completed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExhibitorSnapshot {
+  company_name: string;
+  company_domain: string;
+  company_website?: string;
+  company_logo_url?: string;
+  contact_number: string;
+  executive_name: string;
+  executive_designation: string;
 }
 
 // Seat Map Types for Skia Component
@@ -125,6 +154,16 @@ export interface BookingForm {
   event_id: string;
   stall_id: string;
   user_notes?: string;
+}
+
+export interface ExhibitorProfileForm {
+  company_name: string;
+  company_domain: string;
+  company_website?: string;
+  company_logo_url?: string;
+  contact_number: string;
+  executive_name: string;
+  executive_designation: string;
 }
 
 // Navigation Types

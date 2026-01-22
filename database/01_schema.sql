@@ -316,16 +316,19 @@ ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 -- ============================================================================
 
 -- Users can read all profiles
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON profiles;
 CREATE POLICY "Public profiles are viewable by everyone"
   ON profiles FOR SELECT
   USING (true);
 
 -- Users can insert their own profile
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
 CREATE POLICY "Users can insert their own profile"
   ON profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
 
 -- Users can update their own profile
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 CREATE POLICY "Users can update their own profile"
   ON profiles FOR UPDATE
   USING (auth.uid() = id);
@@ -335,16 +338,19 @@ CREATE POLICY "Users can update their own profile"
 -- ============================================================================
 
 -- Everyone can view published events
+DROP POLICY IF EXISTS "Published events are viewable by everyone" ON events;
 CREATE POLICY "Published events are viewable by everyone"
   ON events FOR SELECT
   USING (status IN ('published', 'ongoing', 'completed'));
 
 -- Authenticated users can view all events (for admin dashboard)
+DROP POLICY IF EXISTS "Authenticated users can view all events" ON events;
 CREATE POLICY "Authenticated users can view all events"
   ON events FOR SELECT
   USING (auth.role() = 'authenticated');
 
 -- Only service role can insert/update/delete events (admin dashboard will use service role)
+DROP POLICY IF EXISTS "Service role can manage events" ON events;
 CREATE POLICY "Service role can manage events"
   ON events FOR ALL
   USING (auth.role() = 'service_role');
@@ -354,6 +360,7 @@ CREATE POLICY "Service role can manage events"
 -- ============================================================================
 
 -- Everyone can view stalls for published events
+DROP POLICY IF EXISTS "Stalls are viewable for published events" ON stalls;
 CREATE POLICY "Stalls are viewable for published events"
   ON stalls FOR SELECT
   USING (
@@ -365,6 +372,7 @@ CREATE POLICY "Stalls are viewable for published events"
   );
 
 -- Service role can manage stalls
+DROP POLICY IF EXISTS "Service role can manage stalls" ON stalls;
 CREATE POLICY "Service role can manage stalls"
   ON stalls FOR ALL
   USING (auth.role() = 'service_role');
@@ -374,21 +382,25 @@ CREATE POLICY "Service role can manage stalls"
 -- ============================================================================
 
 -- Users can view their own bookings
+DROP POLICY IF EXISTS "Users can view their own bookings" ON bookings;
 CREATE POLICY "Users can view their own bookings"
   ON bookings FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can create their own bookings (via RPC function)
+DROP POLICY IF EXISTS "Users can create their own bookings" ON bookings;
 CREATE POLICY "Users can create their own bookings"
   ON bookings FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can update their own bookings (for cancellation)
+DROP POLICY IF EXISTS "Users can update their own bookings" ON bookings;
 CREATE POLICY "Users can update their own bookings"
   ON bookings FOR UPDATE
   USING (auth.uid() = user_id);
 
 -- Service role can view all bookings
+DROP POLICY IF EXISTS "Service role can view all bookings" ON bookings;
 CREATE POLICY "Service role can view all bookings"
   ON bookings FOR SELECT
   USING (auth.role() = 'service_role');
@@ -398,21 +410,25 @@ CREATE POLICY "Service role can view all bookings"
 -- ============================================================================
 
 -- Users can view their own payments
+DROP POLICY IF EXISTS "Users can view their own payments" ON payments;
 CREATE POLICY "Users can view their own payments"
   ON payments FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can create their own payments
+DROP POLICY IF EXISTS "Users can create their own payments" ON payments;
 CREATE POLICY "Users can create their own payments"
   ON payments FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Service role can view all payments
+DROP POLICY IF EXISTS "Service role can view all payments" ON payments;
 CREATE POLICY "Service role can view all payments"
   ON payments FOR SELECT
   USING (auth.role() = 'service_role');
 
 -- Service role can update payments (for webhook processing)
+DROP POLICY IF EXISTS "Service role can update payments" ON payments;
 CREATE POLICY "Service role can update payments"
   ON payments FOR UPDATE
   USING (auth.role() = 'service_role');
@@ -427,11 +443,13 @@ VALUES ('event-images', 'event-images', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Allow public read access to event images
+DROP POLICY IF EXISTS "Public can view event images" ON storage.objects;
 CREATE POLICY "Public can view event images"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'event-images');
 
 -- Allow authenticated users to upload event images (admin only in practice)
+DROP POLICY IF EXISTS "Authenticated users can upload event images" ON storage.objects;
 CREATE POLICY "Authenticated users can upload event images"
   ON storage.objects FOR INSERT
   WITH CHECK (
@@ -440,6 +458,7 @@ CREATE POLICY "Authenticated users can upload event images"
   );
 
 -- Allow authenticated users to update event images
+DROP POLICY IF EXISTS "Authenticated users can update event images" ON storage.objects;
 CREATE POLICY "Authenticated users can update event images"
   ON storage.objects FOR UPDATE
   USING (
@@ -448,6 +467,7 @@ CREATE POLICY "Authenticated users can update event images"
   );
 
 -- Allow authenticated users to delete event images
+DROP POLICY IF EXISTS "Authenticated users can delete event images" ON storage.objects;
 CREATE POLICY "Authenticated users can delete event images"
   ON storage.objects FOR DELETE
   USING (

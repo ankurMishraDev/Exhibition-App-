@@ -1,0 +1,183 @@
+{
+  "halls": [
+    {
+      "id": "H2",
+      "name": "Hall H2 - Live Machine",
+      "layout_type": "double_column_walkway",
+      "color_theme": "#D4E8D4",
+      "walkway_color": "#E8F5E9",
+      "grid": {
+        "columns": 3,
+        "rows": 18
+      },
+      "description": "Simple two-column layout with central walkway",
+      "layout": {
+        "type": "double_column",
+        "left_column": {
+          "column": 0,
+          "start_row": 0,
+          "end_row": 17,
+          "stall_prefix": "H2-L"
+        },
+        "walkway": {
+          "column": 1,
+          "start_row": 0,
+          "end_row": 17
+        },
+        "right_column": {
+          "column": 2,
+          "start_row": 0,
+          "end_row": 17,
+          "stall_prefix": "H2-R"
+        }
+      },
+      "facilities": [
+        {
+          "type": "entrance",
+          "position": { "col": 1, "row": 17 },
+          "icon": "🚪",
+          "label": "Entrance"
+        },
+        {
+          "type": "label",
+          "position": { "col": 1, "row": 0 },
+          "text": "H2 Live Machine"
+        }
+      ],
+      "total_stalls": 36
+    },
+    {
+      "id": "H3",
+      "name": "Hall H3 - Central Plaza",
+      "layout_type": "t_shape_complex",
+      "color_theme": "#F5D0C5",
+      "walkway_color": "#FBE4D8",
+      "grid": {
+        "columns": 7,
+        "rows": 16
+      },
+      "description": "T-shaped layout with central courtyard and walkways",
+      "layout": {
+        "type": "t_shape",
+        "left_column": {
+          "column": 0,
+          "start_row": 0,
+          "end_row": 15,
+          "stall_prefix": "H3-L"
+        },
+        "center_top_section": {
+          "columns": [2, 3, 4],
+          "start_row": 0,
+          "end_row": 6,
+          "stall_prefix": "H3-CT"
+        },
+        "center_bottom_left": {
+          "column": 2,
+          "start_row": 10,
+          "end_row": 12,
+          "stall_prefix": "H3-CBL"
+        },
+        "center_bottom_right": {
+          "column": 4,
+          "start_row": 10,
+          "end_row": 12,
+          "stall_prefix": "H3-CBR"
+        },
+        "right_column": {
+          "column": 6,
+          "start_row": 0,
+          "end_row": 15,
+          "stall_prefix": "H3-R"
+        },
+        "walkway_areas": [
+          { "col": 1, "rows": [0, 15] },
+          { "col": 3, "rows": [7, 9] },
+          { "col": 3, "rows": [13, 15] },
+          { "col": 5, "rows": [0, 15] }
+        ]
+      },
+      "facilities": [
+        {
+          "type": "entrance",
+          "position": { "col": 3, "row": 15 },
+          "icon": "🚪",
+          "label": "Main Entrance"
+        }
+      ],
+      "total_stalls": 45
+    },
+    {
+      "id": "H7",
+      "name": "Hall H7 - Premium Zone",
+      "layout_type": "u_shape_with_center",
+      "color_theme": "#B4E5F0",
+      "walkway_color": "#D4F1F9",
+      "grid": {
+        "columns": 9,
+        "rows": 20
+      },
+      "description": "U-shaped layout with top row, center columns, and side columns",
+      "layout": {
+        "type": "u_shape",
+        "top_row_merged_left": {
+          "start_col": 0,
+          "end_col": 2,
+          "row": 0,
+          "stall_number": "H7-TL",
+          "width": 3,
+          "price_multiplier": 3
+        },
+        "top_row_single": {
+          "columns": [3, 4, 5, 6, 7, 8],
+          "row": 0,
+          "stall_prefix": "H7-T"
+        },
+        "top_row_merged_right": {
+          "start_col": 9,
+          "end_col": 11,
+          "row": 0,
+          "stall_number": "H7-TR",
+          "width": 3,
+          "price_multiplier": 3
+        },
+        "left_column": {
+          "column": 1,
+          "start_row": 1,
+          "end_row": 18,
+          "stall_prefix": "H7-L"
+        },
+        "center_left_column": {
+          "column": 4,
+          "start_row": 3,
+          "end_row": 16,
+          "stall_prefix": "H7-CL"
+        },
+        "center_right_column": {
+          "column": 6,
+          "start_row": 3,
+          "end_row": 16,
+          "stall_prefix": "H7-CR"
+        },
+        "right_column": {
+          "column": 9,
+          "start_row": 1,
+          "end_row": 18,
+          "stall_prefix": "H7-R"
+        },
+        "walkway_areas": [
+          { "cols": [0, 2, 3, 5, 7, 8, 10, 11], "all_rows": true },
+          { "cols": [4, 6], "rows": [1, 2, 17, 18] }
+        ]
+      },
+      "facilities": [
+        {
+          "type": "entrance",
+          "position": { "col": 5, "row": 19 },
+          "icon": "🚪",
+          "label": "Main Entrance"
+        }
+      ],
+      "total_stalls": 68
+    }
+  ]
+}
