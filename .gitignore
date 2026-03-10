@@ -1,0 +1,5 @@
+.vscode
+exhibitionApp/app/firebase-serviceAccount.js
+exhibitionApp/app/adminSDK.json
+exhibitionApp/.env
+database
