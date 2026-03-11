@@ -1,237 +1,475 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Alert, ActivityIndicator, Image, Platform,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { ExhibitorService } from '@/services/exhibitorService';
-import type { ExhibitorProfile } from '@/types';
-import { AppTheme } from '@/constants/theme';
+import { getExhibitorByUserId } from '@/lib/services/exhibitorService';
+import { getExhibitorBookings } from '@/lib/services/bookingService';
+import { ExhibitorModel } from '@/lib/models/exhibitor.model';
+import { logout } from '@/lib/services/authService';
+import { EVENT_NAME, EVENT_DATE, EVENT_LOCATION } from '@/constants/segments';
 
 export default function ProfileScreen() {
-  const insets = useSafeAreaInsets();
-  const { user, appUser, isExhibitor, signOut } = useAuth();
-  const [profile, setProfile] = useState<ExhibitorProfile | null>(null);
+  const router = useRouter();
+  const { user, userModel, isExhibitor } = useAuth();
+  const [exhibitor, setExhibitor] = useState<ExhibitorModel | null>(null);
+  const [bookingCount, setBookingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
-    if (isExhibitor) {
-      ExhibitorService.getProfile(user.uid).then((p) => {
-        setProfile(p);
+    if (!user) return;
+    (async () => {
+      try {
+        if (isExhibitor) {
+          const [e, bookings] = await Promise.all([
+            getExhibitorByUserId(user.uid),
+            getExhibitorBookings(user.uid),
+          ]);
+          setExhibitor(e);
+          setBookingCount(bookings.length);
+        }
+      } catch {
+        // silent
+      } finally {
         setLoading(false);
-      });
-    } else {
-      setLoading(false);
-    }
+      }
+    })();
   }, [user, isExhibitor]);
 
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+  async function handleLogout() {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await logout();
+          } catch {
+            Alert.alert('Error', 'Logout failed. Please try again.');
+          }
+        },
+      },
     ]);
-  };
+  }
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={AppTheme.primary} />
+      <View style={styles.loaderCenter}>
+        <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
 
-  return (
-    <ScrollView style={[styles.container, { paddingTop: insets.top }]} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.avatarWrapper}>
-          {profile?.companyLogo ? (
-            <Image source={{ uri: profile.companyLogo }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Ionicons name="person" size={36} color="#FFF" />
-            </View>
-          )}
-        </View>
-        <Text style={styles.userName}>{appUser?.displayName ?? user?.displayName ?? 'User'}</Text>
-        <Text style={styles.userEmail}>{user?.email}</Text>
-        <View style={styles.roleBadge}>
-          <Ionicons
-            name={isExhibitor ? 'briefcase-outline' : 'person-outline'}
-            size={13}
-            color={AppTheme.primaryDark}
-          />
-          <Text style={styles.roleText}>  {isExhibitor ? 'Exhibitor' : 'Visitor'}</Text>
-        </View>
-      </View>
+  const displayName = exhibitor
+    ? `${exhibitor.contactPrefix} ${exhibitor.contactPerson}`.trim()
+    : userModel?.displayName || user?.email || 'User';
 
-      {/* Exhibitor profile card */}
-      {isExhibitor && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Company Profile</Text>
-          {profile ? (
-            <>
-              <InfoRow icon="business-outline" label="Company" value={profile.companyName} />
-              <InfoRow icon="location-outline" label="City" value={`${profile.city}, ${profile.country}`} />
-              <InfoRow icon="call-outline" label="Mobile" value={profile.telephoneMobile} />
-              <InfoRow icon="mail-outline" label="Work Email" value={profile.companyEmail} />
-              {profile.gstNo && <InfoRow icon="document-text-outline" label="GST" value={profile.gstNo} />}
-              {profile.website && <InfoRow icon="globe-outline" label="Website" value={profile.website} />}
-              <View style={styles.profileCompleteBadge}>
-                <Ionicons
-                  name={profile.isProfileComplete ? 'checkmark-circle' : 'alert-circle-outline'}
-                  size={14}
-                  color={profile.isProfileComplete ? AppTheme.primary : '#F59E0B'}
-                />
-                <Text style={[styles.profileCompleteText, { color: profile.isProfileComplete ? AppTheme.primary : '#F59E0B' }]}>
-                  {'  '}{profile.isProfileComplete ? 'Profile complete' : 'Profile incomplete'}
+  const companyName = exhibitor?.companyName || '';
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header Banner */}
+        <View style={styles.headerBanner}>
+          <View style={styles.avatarWrap}>
+            {exhibitor?.logoUrl ? (
+              <Image source={{ uri: exhibitor.logoUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarInitial}>
+                  {(exhibitor?.companyName || userModel?.displayName || 'U')
+                    .charAt(0)
+                    .toUpperCase()}
                 </Text>
               </View>
-            </>
-          ) : (
-            <View style={styles.noProfileBox}>
-              <Text style={styles.noProfileText}>No profile yet.</Text>
-            </View>
-          )}
-          <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/edit-profile')}>
-            <Ionicons name="pencil-outline" size={15} color={AppTheme.primary} />
-            <Text style={styles.editBtnText}>  Edit Profile</Text>
-          </TouchableOpacity>
+            )}
+            {isExhibitor && (
+              <TouchableOpacity
+                style={styles.editAvatarBtn}
+                onPress={() =>
+                  router.push({
+                    pathname: '/exhibitor-details',
+                    params: {},
+                  })
+                }
+              >
+                <Ionicons name="camera" size={14} color={Colors.white} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <Text style={styles.displayName}>{displayName}</Text>
+          {companyName ? (
+            <Text style={styles.companyName}>{companyName}</Text>
+          ) : null}
+
+          <View style={[styles.rolePill, isExhibitor ? styles.rolePillExhibitor : styles.rolePillVisitor]}>
+            <Ionicons
+              name={isExhibitor ? 'business-outline' : 'person-outline'}
+              size={12}
+              color={isExhibitor ? Colors.primary : Colors.textMuted}
+            />
+            <Text style={[styles.rolePillText, isExhibitor ? styles.rolePillTextExhibitor : styles.rolePillTextVisitor]}>
+              {isExhibitor ? 'Exhibitor' : 'Visitor'}
+            </Text>
+          </View>
         </View>
-      )}
 
-      {/* Menu */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
-        <MenuItem icon="notifications-outline" label="Notifications" onPress={() => router.push('/notifications')} />
-        <MenuItem icon="shield-outline"       label="Privacy & Security" onPress={() => router.push('/privacy-security')} />
-        <MenuItem icon="document-outline"     label="Terms & Conditions" onPress={() => router.push('/terms-conditions')} />
-      </View>
+        {/* Stats Row (Exhibitor only) */}
+        {isExhibitor && (
+          <View style={styles.statsRow}>
+            <StatBox label="Total Bookings" value={String(bookingCount)} icon="receipt-outline" />
+            <View style={styles.statDivider} />
+            <StatBox
+              label="Hall"
+              value={exhibitor?.city || '—'}
+              icon="location-outline"
+            />
+            <View style={styles.statDivider} />
+            <StatBox
+              label="Segments"
+              value={String(exhibitor?.productDetails?.segments?.length || 0)}
+              icon="cube-outline"
+            />
+          </View>
+        )}
 
-      <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
-        <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-        <Text style={styles.signOutText}>  Sign Out</Text>
-      </TouchableOpacity>
+        {/* Event Info Card */}
+        <View style={styles.eventCard}>
+          <View style={styles.eventCardHeader}>
+            <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+            <Text style={styles.eventCardTitle}>Upcoming Event</Text>
+          </View>
+          <Text style={styles.eventName}>{EVENT_NAME}</Text>
+          <View style={styles.eventMeta}>
+            <View style={styles.eventMetaItem}>
+              <Ionicons name="time-outline" size={14} color={Colors.textMuted} />
+              <Text style={styles.eventMetaText}>{EVENT_DATE}</Text>
+            </View>
+            <View style={styles.eventMetaItem}>
+              <Ionicons name="location-outline" size={14} color={Colors.textMuted} />
+              <Text style={styles.eventMetaText}>{EVENT_LOCATION}</Text>
+            </View>
+          </View>
+        </View>
 
-      <View style={{ height: 60 }} />
-    </ScrollView>
+        {/* Profile Actions */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Account</Text>
+
+          {isExhibitor && (
+            <MenuItem
+              icon="person-outline"
+              label="Edit Exhibitor Profile"
+              sub="Update company details and contact info"
+              onPress={() => router.push({ pathname: '/exhibitor-details', params: {} })}
+            />
+          )}
+
+          <MenuItem
+            icon="receipt-outline"
+            label="My Bookings"
+            sub="View and track your stall bookings"
+            onPress={() => router.push('/(tabs)/bookings')}
+          />
+
+          <MenuItem
+            icon="time-outline"
+            label="Booking History"
+            sub="Past bookings and their status"
+            onPress={() => router.push('/(tabs)/history')}
+          />
+
+          <MenuItem
+            icon="notifications-outline"
+            label="Notifications"
+            sub="Event and booking alerts"
+            onPress={() => router.push('/notifications')}
+          />
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>App</Text>
+
+          <MenuItem
+            icon="document-text-outline"
+            label="Terms & Conditions"
+            onPress={() => {/* future */ Alert.alert('Terms', 'Terms & Conditions will be available soon.')}}
+          />
+
+          <MenuItem
+            icon="shield-checkmark-outline"
+            label="Privacy Policy"
+            onPress={() => Alert.alert('Privacy', 'Privacy Policy will be available soon.')}
+          />
+
+          <MenuItem
+            icon="information-circle-outline"
+            label="About"
+            sub={`PlastPack App v1.0.0`}
+            onPress={() => {}}
+            noChevron
+          />
+        </View>
+
+        {/* Logout */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={20} color={Colors.error} />
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
+
+        {/* Email */}
+        <Text style={styles.emailHint}>{user?.email}</Text>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatBox({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <View style={styles.infoRow}>
-      <Ionicons name={icon as any} size={16} color="#6B7280" style={styles.infoIcon} />
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
+    <View style={statStyles.box}>
+      <Ionicons name={icon as never} size={18} color={Colors.primary} />
+      <Text style={statStyles.value}>{value}</Text>
+      <Text style={statStyles.label}>{label}</Text>
     </View>
   );
 }
 
-function MenuItem({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+const statStyles = StyleSheet.create({
+  box: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.md, gap: 4 },
+  value: { fontSize: Typography.size.xl, fontWeight: '800', color: Colors.textPrimary },
+  label: { fontSize: Typography.size.xs, color: Colors.textMuted, textAlign: 'center' },
+});
+
+function MenuItem({
+  icon,
+  label,
+  sub,
+  onPress,
+  noChevron,
+}: {
+  icon: string;
+  label: string;
+  sub?: string;
+  onPress: () => void;
+  noChevron?: boolean;
+}) {
   return (
-    <TouchableOpacity style={styles.menuItem} onPress={onPress}>
-      <Ionicons name={icon as any} size={18} color={AppTheme.primary} />
-      <Text style={styles.menuLabel}>  {label}</Text>
-      <Ionicons name="chevron-forward" size={16} color="#9CA3AF" style={{ marginLeft: 'auto' }} />
+    <TouchableOpacity style={menuStyles.item} onPress={onPress} activeOpacity={0.7}>
+      <View style={menuStyles.iconWrap}>
+        <Ionicons name={icon as never} size={18} color={Colors.primary} />
+      </View>
+      <View style={menuStyles.textWrap}>
+        <Text style={menuStyles.label}>{label}</Text>
+        {sub && <Text style={menuStyles.sub}>{sub}</Text>}
+      </View>
+      {!noChevron && (
+        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+      )}
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' },
-  header: {
-    backgroundColor: AppTheme.deepTeal,
-    alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 28,
-  },
-  avatarWrapper: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    overflow: 'hidden',
-    marginBottom: 12,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.4)',
-  },
-  avatar: { width: 84, height: 84 },
-  avatarFallback: {
-    width: 84,
-    height: 84,
-    backgroundColor: AppTheme.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  userName: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-  userEmail: { color: '#A7F3D0', fontSize: 13, marginTop: 2 },
-  roleBadge: {
+const menuStyles = StyleSheet.create({
+  item: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  roleText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
-  section: {
-    backgroundColor: '#FFF',
-    margin: 16,
-    marginBottom: 0,
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  sectionTitle: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 12 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  infoIcon: { marginRight: 10 },
-  infoLabel: { fontSize: 13, color: '#6B7280', width: 80 },
-  infoValue: { fontSize: 13, color: '#111827', flex: 1, fontWeight: '500' },
-  profileCompleteBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 8 },
-  profileCompleteText: { fontSize: 12, fontWeight: '600' },
-  noProfileBox: { paddingVertical: 12 },
-  noProfileText: { fontSize: 13, color: '#9CA3AF' },
-  editBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: AppTheme.primary,
-  },
-  editBtnText: { fontSize: 13, color: AppTheme.primary, fontWeight: '600' },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
+    gap: Spacing.md,
+    paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: Colors.divider,
   },
-  menuLabel: { fontSize: 14, color: '#111827' },
-  signOutBtn: {
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.primarySurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textWrap: { flex: 1 },
+  label: { fontSize: Typography.size.sm, fontWeight: '600', color: Colors.textPrimary },
+  sub: { fontSize: Typography.size.xs, color: Colors.textMuted, marginTop: 2 },
+});
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: Colors.background },
+  loaderCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  headerBanner: {
+    alignItems: 'center',
+    paddingTop: Spacing['2xl'],
+    paddingBottom: Spacing.xl,
+    paddingHorizontal: Spacing.base,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  avatarWrap: { position: 'relative', marginBottom: Spacing.md },
+  avatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: Colors.primarySurface,
+  },
+  avatarPlaceholder: {
+    width: 90,
+    height: 90,
+    borderRadius: 20,
+    backgroundColor: Colors.primarySurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.primary,
+  },
+  avatarInitial: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  editAvatarBtn: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.white,
+  },
+  displayName: {
+    fontSize: Typography.size.xl,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  companyName: {
+    fontSize: Typography.size.sm,
+    color: Colors.textMuted,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  rolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: Spacing.md,
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+  },
+  rolePillExhibitor: {
+    backgroundColor: Colors.primarySurface,
+    borderColor: Colors.primary,
+  },
+  rolePillVisitor: {
+    backgroundColor: Colors.surfaceVariant,
+    borderColor: Colors.border,
+  },
+  rolePillText: { fontSize: Typography.size.xs, fontWeight: '700' },
+  rolePillTextExhibitor: { color: Colors.primary },
+  rolePillTextVisitor: { color: Colors.textMuted },
+
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  statDivider: { width: 1, backgroundColor: Colors.divider },
+
+  eventCard: {
+    margin: Spacing.base,
+    padding: Spacing.base,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadow.sm,
+  },
+  eventCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  eventCardTitle: {
+    fontSize: Typography.size.sm,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  eventName: {
+    fontSize: Typography.size.lg,
+    fontWeight: '800',
+    color: Colors.primary,
+    marginBottom: Spacing.sm,
+  },
+  eventMeta: { gap: Spacing.xs },
+  eventMetaItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  eventMetaText: { fontSize: Typography.size.sm, color: Colors.textSecondary },
+
+  sectionCard: {
+    marginHorizontal: Spacing.base,
+    marginBottom: Spacing.base,
+    padding: Spacing.base,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadow.sm,
+  },
+  sectionTitle: {
+    fontSize: Typography.size.xs,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
+  },
+
+  logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: 16,
-    marginTop: 20,
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-    backgroundColor: '#FFF5F5',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.base,
+    marginBottom: Spacing.md,
+    height: 52,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.error,
+    backgroundColor: '#FEE2E2',
   },
-  signOutText: { fontSize: 15, color: '#EF4444', fontWeight: '600' },
+  logoutText: { fontSize: Typography.size.base, fontWeight: '700', color: Colors.error },
+  emailHint: {
+    textAlign: 'center',
+    fontSize: Typography.size.xs,
+    color: Colors.textMuted,
+    marginBottom: Spacing.md,
+  },
 });

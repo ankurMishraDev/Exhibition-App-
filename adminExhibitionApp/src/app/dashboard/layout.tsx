@@ -1,109 +1,224 @@
-'use client'
+'use client';
 
-import { useAuth } from '@/contexts/auth-context'
-import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import Link from 'next/link'
-import { 
-  Calendar, 
-  LayoutGrid, 
-  Receipt, 
-  CreditCard, 
-  LogOut,
-  Users
-} from 'lucide-react'
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
+import { toast } from 'sonner';
+
+const NAV_ITEMS = [
+  { href: '/dashboard', label: 'Overview', icon: '📊' },
+  { href: '/dashboard/bookings', label: 'Bookings', icon: '📋' },
+  { href: '/dashboard/halls', label: 'Halls & Stalls', icon: '🏛️' },
+  { href: '/dashboard/exhibitors', label: 'Exhibitors', icon: '🏢' },
+  { href: '/dashboard/payments', label: 'Payments', icon: '💳' },
+];
 
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
-  const { user, loading, signOut } = useAuth()
-  const router = useRouter()
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout, loading } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  useEffect(() => {
+  // Redirect to login if not authenticated
+  React.useEffect(() => {
     if (!loading && !user) {
-      router.push('/login')
+      router.push('/login');
     }
-  }, [user, loading, router])
+  }, [user, loading, router]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-      </div>
-    )
+  async function handleLogout() {
+    try {
+      await logout();
+      router.push('/login');
+    } catch {
+      toast.error('Logout failed');
+    }
   }
 
-  if (!user) {
-    return null
+  if (loading || !user) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#F5F7FA',
+        }}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+          <p style={{ color: '#9CA3AF', fontSize: 14 }}>Loading admin panel...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F7FA' }}>
       {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-purple-600 to-purple-800 text-white flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold">Exhibition Admin</h1>
-          <p className="text-purple-200 text-sm mt-1">Management Dashboard</p>
-        </div>
-
-        <nav className="flex-1 px-4 space-y-2">
-          <Link href="/dashboard">
-            <Button variant="ghost" className="w-full justify-start text-white hover:bg-purple-700">
-              <LayoutGrid className="mr-3 h-5 w-5" />
-              Overview
-            </Button>
-          </Link>
-          <Link href="/dashboard/events">
-            <Button variant="ghost" className="w-full justify-start text-white hover:bg-purple-700">
-              <Calendar className="mr-3 h-5 w-5" />
-              Events
-            </Button>
-          </Link>
-          <Link href="/dashboard/stalls">
-            <Button variant="ghost" className="w-full justify-start text-white hover:bg-purple-700">
-              <LayoutGrid className="mr-3 h-5 w-5" />
-              Stalls
-            </Button>
-          </Link>
-          <Link href="/dashboard/bookings">
-            <Button variant="ghost" className="w-full justify-start text-white hover:bg-purple-700">
-              <Receipt className="mr-3 h-5 w-5" />
-              Bookings
-            </Button>
-          </Link>
-          <Link href="/dashboard/payments">
-            <Button variant="ghost" className="w-full justify-start text-white hover:bg-purple-700">
-              <CreditCard className="mr-3 h-5 w-5" />
-              Payments
-            </Button>
-          </Link>
-        </nav>
-
-        <div className="p-4 border-t border-purple-700">
-          <div className="flex items-center mb-3 px-2">
-            <Users className="h-5 w-5 mr-2" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user.email}</p>
+      <aside
+        style={{
+          width: 256,
+          background: '#0D4F4F',
+          display: 'flex',
+          flexDirection: 'column',
+          flexShrink: 0,
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 50,
+        }}
+      >
+        {/* Logo */}
+        <div
+          style={{
+            padding: '1.5rem',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                background: 'rgba(255,255,255,0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 20,
+              }}
+            >
+              🏭
+            </div>
+            <div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 15 }}>PlastPack</div>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>Admin Panel</div>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-white hover:bg-purple-700"
-            onClick={() => signOut()}
+        </div>
+
+        {/* Tricolor stripe */}
+        <div style={{ display: 'flex', height: 3 }}>
+          <div style={{ flex: 1, background: '#FF9933' }} />
+          <div style={{ flex: 1, background: 'rgba(255,255,255,0.8)' }} />
+          <div style={{ flex: 1, background: '#138808' }} />
+        </div>
+
+        {/* Nav items */}
+        <nav style={{ flex: 1, padding: '1rem 0.75rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {NAV_ITEMS.map((item) => {
+            const isActive =
+              item.href === '/dashboard'
+                ? pathname === '/dashboard'
+                : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  textDecoration: 'none',
+                  color: isActive ? '#fff' : 'rgba(255,255,255,0.65)',
+                  background: isActive ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  fontWeight: isActive ? 700 : 500,
+                  fontSize: 14,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{item.icon}</span>
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* User info + logout */}
+        <div
+          style={{
+            padding: '1rem',
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              marginBottom: 10,
+            }}
           >
-            <LogOut className="mr-3 h-5 w-5" />
-            Sign Out
-          </Button>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 14,
+              }}
+            >
+              {user.email?.charAt(0).toUpperCase() || 'A'}
+            </div>
+            <div style={{ overflow: 'hidden' }}>
+              <div
+                style={{
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  maxWidth: 160,
+                }}
+              >
+                {user.email}
+              </div>
+              <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10 }}>Administrator</div>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '100%',
+              padding: '8px',
+              background: 'rgba(239,68,68,0.15)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 8,
+              color: '#FCA5A5',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+            }}
+          >
+            🚪 Logout
+          </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
+      <main style={{ marginLeft: 256, flex: 1, minHeight: '100vh', overflow: 'auto' }}>
         {children}
       </main>
     </div>
-  )
+  );
 }

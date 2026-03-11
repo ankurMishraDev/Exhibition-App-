@@ -1,304 +1,421 @@
-﻿import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
   View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BrandColors, AppTheme } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/hooks/useAuth';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HallService } from '@/services/hallService';
-import type { Hall } from '@/types';
+import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import { EVENT_DATE, EVENT_LOCATION, EVENT_NAME } from '@/constants/segments';
 
-// PlastPack 2026 event details — single event, static config
-const PLASTPACK_EVENT = {
-  name: 'PlastPack 2026',
-  tagline: 'South Asia\'s Premier Plastics & Packaging Exhibition',
-  dates: 'Feb 20 – Feb 24, 2026',
-  venue: 'India Expo Centre, Greater Noida',
-  description:
-    'PlastPack 2026 brings together the global plastics and packaging industry. Showcase your products, connect with buyers, and explore cutting-edge innovations.',
-};
+const { width } = Dimensions.get('window');
+
+const EVENT_STATS = [
+  { label: 'Total Stalls', value: '250+', icon: 'storefront-outline' },
+  { label: 'Halls', value: '10', icon: 'business-outline' },
+  { label: 'Price From', value: '₹15k', icon: 'pricetag-outline' },
+];
+
+const HIGHLIGHTS = [
+  { icon: 'leaf-outline', color: '#22C55E', text: 'Sustainable Packaging Solutions' },
+  { icon: 'flash-outline', color: '#F59E0B', text: 'Latest Plastics Technology' },
+  { icon: 'people-outline', color: '#3B82F6', text: '500+ Exhibitors Expected' },
+  { icon: 'globe-outline', color: '#8B5CF6', text: 'International Participation' },
+];
 
 export default function HomeScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const insets = useSafeAreaInsets();
-  const { appUser, isExhibitor } = useAuth();
-
-  const [halls, setHalls] = useState<Hall[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const fetchHalls = async () => {
-    try {
-      const data = await HallService.getAllHalls();
-      setHalls(data);
-    } catch (e) {
-      console.error('Failed to fetch halls:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchHalls();
-  }, []);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchHalls();
-    setRefreshing(false);
-  };
-
-  const totalStalls = halls.reduce((sum, h) => sum + (h.stallCount ?? 0), 0);
+  const { userModel, isExhibitor } = useAuth();
+  const router = useRouter();
+  const firstName = userModel?.displayName?.split(' ')[0] ?? 'there';
 
   return (
-    <ThemedView style={styles.container}>
-      {/* ── Header ── */}
-      <LinearGradient
-        colors={[AppTheme.deepTealDark, AppTheme.deepTeal, AppTheme.deepTealLight]}
-        style={[styles.header, { paddingTop: insets.top + 8 }]}
-      >
-        <View style={styles.decoCircle1} />
-        <View style={styles.decoCircle2} />
-        <View style={styles.headerRow}>
-          <View>
-            <ThemedText style={styles.greeting}>
-              Hello, {appUser?.displayName?.split(' ')[0] ?? 'Welcome'} 👋
-            </ThemedText>
-            <ThemedText style={styles.headerTag}>
-              {isExhibitor ? 'Exhibitor Account' : 'Visitor Account'}
-            </ThemedText>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+
+        {/* ─── Header Banner ──────────────────────────────────── */}
+        <LinearGradient
+          colors={[Colors.primary, Colors.primaryLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.banner}
+        >
+          {/* Indian tricolor stripe at top */}
+          <View style={styles.tricolorBar}>
+            <View style={[styles.tricolorSegment, { backgroundColor: Colors.saffron }]} />
+            <View style={[styles.tricolorSegment, { backgroundColor: Colors.white }]} />
+            <View style={[styles.tricolorSegment, { backgroundColor: Colors.green }]} />
           </View>
-          <TouchableOpacity onPress={() => router.push('/notifications')} style={styles.notifBtn}>
-            <Ionicons name="notifications-outline" size={22} color="#fff" />
-          </TouchableOpacity>
+
+          <View style={styles.bannerContent}>
+            <View style={styles.bannerTop}>
+              <View>
+                <Text style={styles.greetingText}>Hello, {firstName}! 👋</Text>
+                <View style={styles.locationRow}>
+                  <Ionicons name="location-outline" size={14} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.locationText}>{EVENT_LOCATION}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.notifBtn}
+                onPress={() => router.push('/notifications')}
+              >
+                <Ionicons name="notifications-outline" size={22} color={Colors.white} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Event card */}
+            <View style={styles.eventCard}>
+              <View style={styles.eventCardTop}>
+                <View style={styles.eventBadge}>
+                  <Text style={styles.eventBadgeText}>LIVE EVENT</Text>
+                </View>
+                <Text style={styles.eventName}>{EVENT_NAME}</Text>
+                <Text style={styles.eventDate}>
+                  <Ionicons name="calendar-outline" size={13} color={Colors.textSecondary} />
+                  {'  '}{EVENT_DATE}
+                </Text>
+                <Text style={styles.eventLocation}>
+                  <Ionicons name="location-outline" size={13} color={Colors.textSecondary} />
+                  {'  '}{EVENT_LOCATION}
+                </Text>
+              </View>
+
+              <View style={styles.statsRow}>
+                {EVENT_STATS.map((s) => (
+                  <View key={s.label} style={styles.statBox}>
+                    <Ionicons name={s.icon as never} size={18} color={Colors.primary} />
+                    <Text style={styles.statValue}>{s.value}</Text>
+                    <Text style={styles.statLabel}>{s.label}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {isExhibitor && (
+                <TouchableOpacity
+                  style={styles.bookBtn}
+                  onPress={() => router.push('/hall-selection')}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="storefront" size={20} color={Colors.white} />
+                  <Text style={styles.bookBtnText}>Book a Stall</Text>
+                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                </TouchableOpacity>
+              )}
+
+              {!isExhibitor && (
+                <View style={styles.visitorNote}>
+                  <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.visitorNoteText}>
+                    Visitor mode — Browse halls and exhibitor listings
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* ─── Explore Halls ──────────────────────────────────── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Event Highlights</Text>
+          </View>
+          <View style={styles.highlightGrid}>
+            {HIGHLIGHTS.map((h) => (
+              <View key={h.text} style={styles.highlightCard}>
+                <View style={[styles.highlightIcon, { backgroundColor: h.color + '20' }]}>
+                  <Ionicons name={h.icon as never} size={22} color={h.color} />
+                </View>
+                <Text style={styles.highlightText}>{h.text}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
-        {/* Event name banner */}
-        <View style={styles.eventBanner}>
-          <ThemedText style={styles.eventName}>{PLASTPACK_EVENT.name}</ThemedText>
-          <ThemedText style={styles.eventTagline}>{PLASTPACK_EVENT.tagline}</ThemedText>
-        </View>
-      </LinearGradient>
-
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AppTheme.deepTeal} />}
-      >
-        {/* ── Event Info Card ── */}
-        <View style={[styles.infoCard, { backgroundColor: isDark ? BrandColors.gray[800] : '#fff' }]}>
-          <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={16} color={AppTheme.deepTeal} />
-            <ThemedText style={[styles.infoText, { color: isDark ? BrandColors.gray[300] : BrandColors.gray[700] }]}>
-              {PLASTPACK_EVENT.dates}
-            </ThemedText>
+        {/* ─── About Event ──────────────────────────────────── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>About PlastPack</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Ionicons name="location-outline" size={16} color={AppTheme.deepTeal} />
-            <ThemedText style={[styles.infoText, { color: isDark ? BrandColors.gray[300] : BrandColors.gray[700] }]}>
-              {PLASTPACK_EVENT.venue}
-            </ThemedText>
-          </View>
-          <ThemedText style={[styles.eventDesc, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-            {PLASTPACK_EVENT.description}
-          </ThemedText>
-        </View>
-
-        {/* ── Stats Row ── */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statBox, { backgroundColor: isDark ? BrandColors.gray[800] : '#fff' }]}>
-            <Ionicons name="grid-outline" size={22} color={AppTheme.deepTeal} />
-            <ThemedText style={[styles.statVal, { color: AppTheme.deepTeal }]}>{halls.length || '–'}</ThemedText>
-            <ThemedText style={[styles.statLbl, { color: BrandColors.gray[400] }]}>Halls</ThemedText>
-          </View>
-          <View style={[styles.statBox, { backgroundColor: isDark ? BrandColors.gray[800] : '#fff' }]}>
-            <Ionicons name="storefront-outline" size={22} color={AppTheme.primary} />
-            <ThemedText style={[styles.statVal, { color: AppTheme.primary }]}>{totalStalls || '–'}</ThemedText>
-            <ThemedText style={[styles.statLbl, { color: BrandColors.gray[400] }]}>Total Stalls</ThemedText>
+          <View style={styles.aboutCard}>
+            <Text style={styles.aboutText}>
+              {"PlastPack is India's premier plastics and packaging exhibition, bringing together manufacturers, suppliers, and innovators from across the globe. This year's event showcases groundbreaking advances in sustainable plastics, modern packaging technology, and industrial processing machinery."}
+            </Text>
+            <TouchableOpacity style={styles.readMoreBtn} onPress={() => router.push('/event/plastpack-2026' as never)}>
+              <Text style={styles.readMoreText}>View Event Details</Text>
+              <Ionicons name="arrow-forward" size={14} color={Colors.primary} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* ── Book Stall CTA — Exhibitor only ── */}
+        {/* ─── Quick Actions (Exhibitors only) ──────────────── */}
         {isExhibitor && (
-          <TouchableOpacity
-            style={styles.bookBtn}
-            onPress={() => router.push('/hall-selection/index')}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={[AppTheme.deepTeal, AppTheme.deepTealLight]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.bookGradient}
-            >
-              <View style={styles.bookBtnLeft}>
-                <Ionicons name="storefront" size={28} color="#fff" />
-                <View>
-                  <ThemedText style={styles.bookBtnTitle}>Book a Stall</ThemedText>
-                  <ThemedText style={styles.bookBtnSub}>Choose hall & select your stall</ThemedText>
+          <View style={[styles.section, { paddingBottom: Spacing['2xl'] }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Quick Actions</Text>
+            </View>
+            <View style={styles.actionsRow}>
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/hall-selection')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: Colors.primarySurface }]}>
+                  <Ionicons name="map-outline" size={24} color={Colors.primary} />
                 </View>
-              </View>
-              <Ionicons name="arrow-forward-circle" size={28} color="rgba(255,255,255,0.8)" />
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
-
-        {/* ── Halls Preview ── */}
-        <View style={styles.sectionHeader}>
-          <ThemedText style={styles.sectionTitle}>Exhibition Halls</ThemedText>
-          {isExhibitor && (
-            <TouchableOpacity onPress={() => router.push('/hall-selection/index')}>
-              <ThemedText style={[styles.seeAll, { color: AppTheme.deepTeal }]}>View All</ThemedText>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {loading ? (
-          <ActivityIndicator size="small" color={AppTheme.deepTeal} style={{ marginTop: 16 }} />
-        ) : halls.length === 0 ? (
-          <View style={[styles.emptyHalls, { backgroundColor: isDark ? BrandColors.gray[800] : BrandColors.gray[50] }]}>
-            <Ionicons name="business-outline" size={36} color={BrandColors.gray[400]} />
-            <ThemedText style={[styles.emptyText, { color: BrandColors.gray[400] }]}>
-              Halls will be published soon
-            </ThemedText>
+                <Text style={styles.actionText}>Browse Halls</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/(tabs)/bookings')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: Colors.saffronLight }]}>
+                  <Ionicons name="ticket-outline" size={24} color={Colors.saffron} />
+                </View>
+                <Text style={styles.actionText}>My Bookings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionCard}
+                onPress={() => router.push('/(tabs)/profile')}
+              >
+                <View style={[styles.actionIcon, { backgroundColor: Colors.greenLight }]}>
+                  <Ionicons name="person-outline" size={24} color={Colors.green} />
+                </View>
+                <Text style={styles.actionText}>My Profile</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        ) : (
-          halls.map((hall) => (
-            <TouchableOpacity
-              key={hall.id}
-              style={[styles.hallCard, { backgroundColor: isDark ? BrandColors.gray[800] : '#fff' }]}
-              onPress={() => isExhibitor && router.push(`/hall/${hall.id}`)}
-              activeOpacity={isExhibitor ? 0.7 : 1}
-            >
-              <View style={styles.hallAccent} />
-              <View style={styles.hallCardBody}>
-                <View style={styles.hallCardTop}>
-                  <View style={[styles.hallIconBg, { backgroundColor: AppTheme.deepTealSoft ?? 'rgba(0,128,128,0.1)' }]}>
-                    <Ionicons name="business" size={20} color={AppTheme.deepTeal} />
-                  </View>
-                  <View style={styles.hallInfo}>
-                    <ThemedText style={styles.hallName}>{hall.hallName}</ThemedText>
-                    {hall.stallCount !== undefined && (
-                      <ThemedText style={[styles.hallStallCount, { color: BrandColors.gray[400] }]}>
-                        {hall.stallCount} stalls
-                      </ThemedText>
-                    )}
-                  </View>
-                  {isExhibitor && (
-                    <Ionicons name="chevron-forward" size={18} color={BrandColors.gray[400]} />
-                  )}
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))
         )}
+
+        <View style={{ height: Spacing.xl }} />
       </ScrollView>
-    </ThemedView>
+    </SafeAreaView>
   );
 }
 
+const cardWidth = (width - Spacing['2xl'] * 2 - Spacing.md) / 2;
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    paddingBottom: 32,
-    paddingHorizontal: 20,
-    overflow: 'hidden',
+  safe: { flex: 1, backgroundColor: Colors.background },
+  scroll: { flex: 1 },
+
+  // Banner
+  banner: { paddingBottom: Spacing['3xl'] },
+  tricolorBar: { flexDirection: 'row', height: 4 },
+  tricolorSegment: { flex: 1 },
+  bannerContent: { padding: Spacing.base },
+  bannerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.base,
   },
-  decoCircle1: {
-    position: 'absolute', top: -40, right: -40,
-    width: 160, height: 160, borderRadius: 80,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+  greetingText: {
+    fontSize: Typography.size.xl,
+    fontWeight: '700',
+    color: Colors.white,
   },
-  decoCircle2: {
-    position: 'absolute', bottom: -20, left: -30,
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  headerRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  greeting: { fontSize: 20, fontWeight: '700', color: '#fff' },
-  headerTag: { fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  locationText: { fontSize: Typography.size.xs, color: 'rgba(255,255,255,0.8)' },
   notifBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center', alignItems: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  eventBanner: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 14, padding: 14,
+
+  // Event Card
+  eventCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    padding: Spacing.base,
+    ...Shadow.lg,
   },
-  eventName: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 4 },
-  eventTagline: { fontSize: 13, color: 'rgba(255,255,255,0.75)' },
-  content: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 32 },
-  infoCard: {
-    borderRadius: 16, padding: 16, marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+  eventCardTop: { marginBottom: Spacing.md },
+  eventBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 3,
+    marginBottom: Spacing.sm,
   },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  infoText: { fontSize: 14, fontWeight: '500' },
-  eventDesc: { fontSize: 13, lineHeight: 19, marginTop: 4 },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  eventBadgeText: {
+    fontSize: Typography.size.xs,
+    fontWeight: '700',
+    color: Colors.primary,
+    letterSpacing: 0.5,
+  },
+  eventName: {
+    fontSize: Typography.size['2xl'],
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  eventDate: {
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+    marginBottom: 2,
+  },
+  eventLocation: {
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+  },
+
+  // Stats
+  statsRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    paddingTop: Spacing.md,
+    marginBottom: Spacing.md,
+  },
   statBox: {
-    flex: 1, borderRadius: 16, padding: 16,
-    alignItems: 'center', gap: 4,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
   },
-  statVal: { fontSize: 22, fontWeight: '800' },
-  statLbl: { fontSize: 12 },
+  statValue: {
+    fontSize: Typography.size.md,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  statLabel: {
+    fontSize: Typography.size.xs,
+    color: Colors.textMuted,
+  },
+
+  // Book Stall button
   bookBtn: {
-    borderRadius: 18, overflow: 'hidden', marginBottom: 24,
-    shadowColor: AppTheme.deepTeal, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 10, elevation: 5,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    ...Shadow.md,
   },
-  bookGradient: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 18,
+  bookBtnText: {
+    color: Colors.white,
+    fontSize: Typography.size.base,
+    fontWeight: '700',
   },
-  bookBtnLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  bookBtnTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  bookBtnSub: { fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  visitorNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.md,
+  },
+  visitorNoteText: {
+    flex: 1,
+    fontSize: Typography.size.sm,
+    color: Colors.primary,
+  },
+
+  // Sections
+  section: { paddingHorizontal: Spacing.base, marginTop: Spacing.xl },
   sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700' },
-  seeAll: { fontSize: 13, fontWeight: '600' },
-  emptyHalls: {
-    borderRadius: 16, padding: 32, alignItems: 'center', gap: 10,
+  sectionTitle: {
+    fontSize: Typography.size.lg,
+    fontWeight: '700',
+    color: Colors.textPrimary,
   },
-  emptyText: { fontSize: 14 },
-  hallCard: {
-    borderRadius: 14, marginBottom: 10, flexDirection: 'row', overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
+
+  // Highlights grid
+  highlightGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
   },
-  hallAccent: { width: 4, backgroundColor: AppTheme.deepTeal },
-  hallCardBody: { flex: 1, padding: 14 },
-  hallCardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  hallIconBg: {
-    width: 40, height: 40, borderRadius: 10,
-    justifyContent: 'center', alignItems: 'center',
+  highlightCard: {
+    width: cardWidth,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    ...Shadow.sm,
   },
-  hallInfo: { flex: 1 },
-  hallName: { fontSize: 15, fontWeight: '600' },
-  hallStallCount: { fontSize: 12, marginTop: 2 },
+  highlightIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  highlightText: {
+    flex: 1,
+    fontSize: Typography.size.xs,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+    lineHeight: 16,
+  },
+
+  // About
+  aboutCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    padding: Spacing.base,
+    ...Shadow.sm,
+  },
+  aboutText: {
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+    lineHeight: 22,
+  },
+  readMoreBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: Spacing.md,
+  },
+  readMoreText: {
+    fontSize: Typography.size.sm,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+
+  // Quick actions
+  actionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  actionCard: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    alignItems: 'center',
+    gap: Spacing.sm,
+    ...Shadow.sm,
+  },
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    fontSize: Typography.size.xs,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
 });

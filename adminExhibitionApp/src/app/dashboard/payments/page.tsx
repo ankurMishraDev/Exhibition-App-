@@ -1,403 +1,402 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
+import React, { useEffect, useState } from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Eye, Filter, TrendingUp, Clock, CheckCircle, RefreshCw } from 'lucide-react'
-import { toast } from 'sonner'
-import { format } from 'date-fns'
+  getAllBookings,
+  getAllPayments,
+  addPaymentRecord,
+  createPaymentRecord,
+  type Booking,
+  type Payment,
+  type PaymentRecord,
+} from '@/lib/firebase/services';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { toast } from 'sonner';
 
-type Payment = {
-  id: string
-  booking_id: string
-  user_id: string
-  amount: number
-  currency: string
-  method: string
-  status: 'created' | 'captured' | 'failed' | 'refunded'
-  razorpay_payment_id: string | null
-  razorpay_order_id: string | null
-  created_at: string
-  bookings?: {
-    id: string
-    status: string
-    events?: { title: string }
-    stalls?: { stall_number: string }
-  }
-  profiles?: { name: string; phone: string }
-}
+const PAYMENT_METHODS = ['Cash', 'NEFT', 'RTGS', 'Cheque', 'UPI', 'Bank Transfer', 'DD'];
 
-const statusColors: Record<string, string> = {
-  created: 'bg-yellow-100 text-yellow-700',
-  captured: 'bg-green-100 text-green-700',
-  failed: 'bg-red-100 text-red-700',
-  refunded: 'bg-gray-100 text-gray-700',
-}
-
-const statusIcons: Record<string, any> = {
-  created: Clock,
-  captured: CheckCircle,
-  failed: RefreshCw,
-  refunded: RefreshCw,
-}
+type PaymentRow = {
+  booking: Booking;
+  payment: Payment | null;
+};
 
 export default function PaymentsPage() {
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  
-  // Detail dialog
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [rows, setRows] = useState<PaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'unpaid' | 'partial' | 'paid'>('all');
+  const [search, setSearch] = useState('');
+
+  // Record payment modal
+  const [recordTarget, setRecordTarget] = useState<PaymentRow | null>(null);
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('NEFT');
+  const [reference, setReference] = useState('');
+  const [payNotes, setPayNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // View payment history modal
+  const [historyTarget, setHistoryTarget] = useState<PaymentRow | null>(null);
 
   useEffect(() => {
-    fetchPayments()
-  }, [])
+    (async () => {
+      try {
+        const bookings = await getAllBookings();
+        const approved = bookings.filter((b) => b.status === 'approved');
+        const payments = await getAllPayments();
+        const paymentMap = new Map(payments.map((p) => [p.bookingId, p]));
+        const compiled: PaymentRow[] = approved.map((b) => ({
+          booking: b,
+          payment: paymentMap.get(b.id) ?? null,
+        }));
+        setRows(compiled);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-  async function fetchPayments() {
-    const supabase = createClient()
-    
-    const { data, error } = await supabase
-      .from('payments')
-      .select(`
-        *,
-        bookings(
-          id,
-          status,
-          events(title),
-          stalls(stall_number)
-        ),
-        profiles(name, phone)
-      `)
-      .order('created_at', { ascending: false })
+  function getPaymentStatus(row: PaymentRow): 'unpaid' | 'partial' | 'paid' {
+    if (!row.payment || row.payment.paidAmount === 0) return 'unpaid';
+    if (row.payment.remainingAmount > 0) return 'partial';
+    return 'paid';
+  }
 
-    if (error) {
-      toast.error('Failed to fetch payments')
-      console.error(error)
-    } else {
-      setPayments(data || [])
+  const filtered = rows.filter((r) => {
+    const s = getPaymentStatus(r);
+    if (filter !== 'all' && s !== filter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      return r.booking.stallCode?.toLowerCase().includes(q) || r.booking.companyName?.toLowerCase().includes(q);
     }
-    setLoading(false)
-  }
-
-  const filteredPayments = payments.filter(payment => {
-    if (filterStatus !== 'all' && payment.status !== filterStatus) return false
-    return true
-  })
-
-  const openDetailDialog = (payment: Payment) => {
-    setSelectedPayment(payment)
-    setDetailDialogOpen(true)
-  }
-
-  const initiateRefund = async (paymentId: string) => {
-    if (!confirm('Are you sure you want to refund this payment?')) return
-    
-    const supabase = createClient()
-    
-    try {
-      const { error } = await supabase
-        .from('payments')
-        .update({ status: 'refunded' })
-        .eq('id', paymentId)
-
-      if (error) throw error
-
-      toast.success('Payment marked as refunded')
-      fetchPayments()
-      setDetailDialogOpen(false)
-    } catch (error: any) {
-      toast.error('Failed to process refund')
-      console.error(error)
-    }
-  }
+    return true;
+  });
 
   // Stats
-  const totalPayments = payments.length
-  const capturedPayments = payments.filter(p => p.status === 'captured')
-  const totalCaptured = capturedPayments.reduce((sum, p) => sum + Number(p.amount), 0)
-  const pendingPayments = payments.filter(p => p.status === 'created')
-  const totalPending = pendingPayments.reduce((sum, p) => sum + Number(p.amount), 0)
-  const refundedPayments = payments.filter(p => p.status === 'refunded')
-  const totalRefunded = refundedPayments.reduce((sum, p) => sum + Number(p.amount), 0)
+  const totalRevenue = rows.reduce((sum, r) => sum + (r.booking.totalAmount || 0), 0);
+  const totalCollected = rows.reduce((sum, r) => sum + (r.payment?.paidAmount ?? 0), 0);
+  const totalOutstanding = totalRevenue - totalCollected;
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/4"></div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
-      </div>
-    )
+  function openRecordPayment(row: PaymentRow) {
+    const remaining = row.payment ? row.payment.remainingAmount : row.booking.totalAmount || 0;
+    setRecordTarget(row);
+    setAmount(String(remaining));
+    setMethod('NEFT');
+    setReference('');
+    setPayNotes('');
   }
 
+  async function submitPayment() {
+    if (!recordTarget) return;
+    const num = parseFloat(amount);
+    if (!num || num <= 0) { toast.error('Enter a valid amount'); return; }
+    setSaving(true);
+    try {
+      const { booking, payment } = recordTarget;
+      const record: PaymentRecord = {
+        amount: num,
+        method,
+        date: new Date().toISOString(),
+        reference: reference.trim() || undefined,
+        notes: payNotes.trim() || undefined,
+        recordedBy: 'Admin',
+      };
+
+      let updatedPayment: Payment;
+      if (!payment) {
+        const total = booking.totalAmount || 0;
+        const id = await createPaymentRecord({
+          bookingId: booking.id,
+          exhibitorId: booking.exhibitorId,
+          stallId: booking.stallId,
+          stallCode: booking.stallCode,
+          companyName: booking.companyName,
+          totalAmount: total,
+          paidAmount: num,
+          remainingAmount: Math.max(0, total - num),
+          paymentRecords: [record],
+        });
+        updatedPayment = {
+          id,
+          bookingId: booking.id,
+          exhibitorId: booking.exhibitorId,
+          stallId: booking.stallId,
+          stallCode: booking.stallCode,
+          companyName: booking.companyName,
+          totalAmount: total,
+          paidAmount: num,
+          remainingAmount: Math.max(0, total - num),
+          paymentRecords: [record],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        await addPaymentRecord(booking.id, record);
+        updatedPayment = {
+          ...payment,
+          paidAmount: payment.paidAmount + num,
+          remainingAmount: Math.max(0, payment.remainingAmount - num),
+          paymentRecords: [...payment.paymentRecords, record],
+        };
+      }
+
+      setRows((prev) =>
+        prev.map((r) =>
+          r.booking.id === booking.id ? { ...r, payment: updatedPayment } : r,
+        ),
+      );
+      toast.success('Payment recorded');
+      setRecordTarget(null);
+    } catch { toast.error('Failed to record payment'); }
+    finally { setSaving(false); }
+  }
+
+  const counts = {
+    all: rows.length,
+    unpaid: rows.filter((r) => getPaymentStatus(r) === 'unpaid').length,
+    partial: rows.filter((r) => getPaymentStatus(r) === 'partial').length,
+    paid: rows.filter((r) => getPaymentStatus(r) === 'paid').length,
+  };
+
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Payments</h1>
-        <p className="text-gray-500 mt-1">Track and manage all payment transactions</p>
+    <div style={{ padding: '2rem' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#1A1A2E', margin: 0 }}>Payments</h1>
+        <p style={{ color: '#9CA3AF', marginTop: 4, fontSize: 14 }}>Record and track offline payments for approved bookings</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Total Transactions</p>
-                <p className="text-2xl font-bold">{totalPayments}</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Captured</p>
-                <p className="text-2xl font-bold text-green-600">₹{totalCaptured.toLocaleString('en-IN')}</p>
-                <p className="text-xs text-gray-400">{capturedPayments.length} payments</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Pending</p>
-                <p className="text-2xl font-bold text-yellow-600">₹{totalPending.toLocaleString('en-IN')}</p>
-                <p className="text-xs text-gray-400">{pendingPayments.length} payments</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-yellow-100 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Refunded</p>
-                <p className="text-2xl font-bold text-gray-600">₹{totalRefunded.toLocaleString('en-IN')}</p>
-                <p className="text-xs text-gray-400">{refundedPayments.length} payments</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center">
-                <RefreshCw className="h-5 w-5 text-gray-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+        <StatCard label="Total Expected" value={formatCurrency(totalRevenue)} sub={`${rows.length} approved bookings`} color="#0D4F4F" />
+        <StatCard label="Total Collected" value={formatCurrency(totalCollected)} sub={`${counts.paid} fully paid`} color="#16A34A" />
+        <StatCard label="Outstanding" value={formatCurrency(totalOutstanding)} sub={`${counts.unpaid + counts.partial} pending`} color="#DC2626" />
       </div>
 
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex gap-4 items-end">
-            <div className="space-y-2">
-              <Label>Filter by Status</Label>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="created">Pending</SelectItem>
-                  <SelectItem value="captured">Captured</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="refunded">Refunded</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="outline" onClick={() => setFilterStatus('all')}>
-              <Filter className="h-4 w-4 mr-2" />
-              Clear Filter
-            </Button>
-            <Button variant="outline" onClick={fetchPayments}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+        {/* Filter tabs */}
+        <div style={{ display: 'flex', background: '#F3F4F6', borderRadius: 10, padding: 4, gap: 2 }}>
+          {(['all', 'unpaid', 'partial', 'paid'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setFilter(tab)}
+              style={{ padding: '6px 14px', borderRadius: 8, border: 'none', background: filter === tab ? '#fff' : 'transparent', color: filter === tab ? '#1A1A2E' : '#9CA3AF', fontWeight: 700, fontSize: 13, cursor: 'pointer', boxShadow: filter === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', whiteSpace: 'nowrap' }}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)} <span style={{ fontSize: 11 }}>({counts[tab]})</span>
+            </button>
+          ))}
+        </div>
 
-      {/* Payments Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Payments ({filteredPayments.length})</CardTitle>
-          <CardDescription>View all payment transactions</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {filteredPayments.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No payments found</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Payment ID</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Event</TableHead>
-                  <TableHead>Stall</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell className="font-mono text-xs">{payment.id.slice(0, 8)}...</TableCell>
-                    <TableCell>{payment.profiles?.name || 'N/A'}</TableCell>
-                    <TableCell>{payment.bookings?.events?.title || 'N/A'}</TableCell>
-                    <TableCell>{payment.bookings?.stalls?.stall_number || 'N/A'}</TableCell>
-                    <TableCell className="font-medium">₹{Number(payment.amount).toLocaleString()}</TableCell>
-                    <TableCell className="capitalize">{payment.method || 'N/A'}</TableCell>
-                    <TableCell>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[payment.status]}`}>
-                        {payment.status === 'created' ? 'pending' : payment.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>{format(new Date(payment.created_at), 'MMM d, yyyy')}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => openDetailDialog(payment)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search stall or company…"
+          style={{ flex: 1, maxWidth: 320, height: 38, padding: '0 14px', border: '1.5px solid #E5E7EB', borderRadius: 10, fontSize: 14, outline: 'none', background: '#fff' }}
+        />
+      </div>
+
+      {/* Table */}
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E5E7EB', overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#9CA3AF' }}>Loading payment data…</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: '4rem', textAlign: 'center', color: '#9CA3AF' }}>No approved bookings found.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                {['Stall', 'Company', 'Total', 'Paid', 'Remaining', 'Status', 'Actions'].map((h) => (
+                  <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                 ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => {
+                const status = getPaymentStatus(row);
+                const { booking, payment } = row;
+                const paid = payment?.paidAmount ?? 0;
+                const remaining = payment ? payment.remainingAmount : (booking.totalAmount || 0);
+                return (
+                  <tr
+                    key={booking.id}
+                    style={{ borderBottom: '1px solid #F3F4F6', background: status === 'paid' ? '#F0FDF4' : 'transparent' }}
+                  >
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ fontWeight: 800, fontSize: 14, color: '#0D4F4F' }}>{booking.stallCode}</div>
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{booking.hallName}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: '#1A1A2E' }}>{booking.companyName || '—'}</div>
+                      <div style={{ fontSize: 11, color: '#9CA3AF' }}>{booking.exhibitorName}</div>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontWeight: 700, fontSize: 14, color: '#1A1A2E' }}>{formatCurrency(booking.totalAmount || 0)}</td>
+                    <td style={{ padding: '14px 16px', fontWeight: 700, fontSize: 14, color: '#16A34A' }}>{formatCurrency(paid)}</td>
+                    <td style={{ padding: '14px 16px', fontWeight: 700, fontSize: 14, color: remaining > 0 ? '#DC2626' : '#9CA3AF' }}>{formatCurrency(remaining)}</td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <PayStatusBadge status={status} />
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {status !== 'paid' && (
+                          <button onClick={() => openRecordPayment(row)} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: '#0D4F4F', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                            + Record
+                          </button>
+                        )}
+                        {payment && payment.paymentRecords.length > 0 && (
+                          <button onClick={() => setHistoryTarget(row)} style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #E5E7EB', background: '#fff', color: '#4B5563', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                            History ({payment.paymentRecords.length})
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
 
-      {/* Detail Dialog */}
-      <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Payment Details</DialogTitle>
-            <DialogDescription>
-              View payment transaction details
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedPayment && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-500">Payment ID</p>
-                  <p className="font-mono text-xs">{selectedPayment.id}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Date</p>
-                  <p>{format(new Date(selectedPayment.created_at), 'PPP p')}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">User</p>
-                  <p className="font-medium">{selectedPayment.profiles?.name || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Phone</p>
-                  <p>{selectedPayment.profiles?.phone || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Event</p>
-                  <p className="font-medium">{selectedPayment.bookings?.events?.title || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Stall</p>
-                  <p className="font-medium">{selectedPayment.bookings?.stalls?.stall_number || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Method</p>
-                  <p className="capitalize">{selectedPayment.method}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Currency</p>
-                  <p>{selectedPayment.currency}</p>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-gray-500 text-sm">Amount</p>
-                    <p className="text-2xl font-bold">₹{Number(selectedPayment.amount).toLocaleString()}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[selectedPayment.status]}`}>
-                    {selectedPayment.status === 'created' ? 'pending' : selectedPayment.status}
-                  </span>
-                </div>
-              </div>
-
-              {selectedPayment.razorpay_payment_id && (
-                <div className="border-t pt-4">
-                  <p className="text-gray-500 text-sm mb-1">Razorpay Payment ID</p>
-                  <p className="font-mono text-xs bg-gray-100 p-2 rounded">{selectedPayment.razorpay_payment_id}</p>
-                </div>
-              )}
-
-              {selectedPayment.razorpay_order_id && (
-                <div>
-                  <p className="text-gray-500 text-sm mb-1">Razorpay Order ID</p>
-                  <p className="font-mono text-xs bg-gray-100 p-2 rounded">{selectedPayment.razorpay_order_id}</p>
-                </div>
-              )}
+      {/* Record Payment Modal */}
+      {recordTarget && (
+        <Modal title="Record Payment" onClose={() => setRecordTarget(null)}>
+          <div style={{ padding: '12px 14px', background: '#F9FAFB', borderRadius: 10, marginBottom: '1.25rem', fontSize: 13 }}>
+            <div style={{ fontWeight: 700, color: '#1A1A2E', marginBottom: 4 }}>{recordTarget.booking.companyName} — {recordTarget.booking.stallCode}</div>
+            <div style={{ color: '#6B7280' }}>
+              Total: <strong>{formatCurrency(recordTarget.booking.totalAmount || 0)}</strong> ·
+              Remaining: <strong style={{ color: '#DC2626' }}>{formatCurrency(recordTarget.payment ? recordTarget.payment.remainingAmount : (recordTarget.booking.totalAmount || 0))}</strong>
             </div>
-          )}
+          </div>
 
-          <DialogFooter className="flex gap-2">
-            {selectedPayment?.status === 'captured' && (
-              <Button 
-                variant="outline" 
-                className="text-orange-600 border-orange-200 hover:bg-orange-50"
-                onClick={() => initiateRefund(selectedPayment.id)}
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Mark as Refunded
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <FormGroup label="Amount (₹)" required>
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" style={inputStyle} placeholder="Enter amount" autoFocus />
+          </FormGroup>
+          <FormGroup label="Payment Method">
+            <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
+              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </FormGroup>
+          <FormGroup label="Reference / Cheque No.">
+            <input value={reference} onChange={(e) => setReference(e.target.value)} style={inputStyle} placeholder="Optional" />
+          </FormGroup>
+          <FormGroup label="Notes">
+            <textarea value={payNotes} onChange={(e) => setPayNotes(e.target.value)} style={{ ...inputStyle, height: 70, paddingTop: 10, resize: 'vertical' }} placeholder="Optional notes" />
+          </FormGroup>
+
+          <ModalActions onCancel={() => setRecordTarget(null)} onConfirm={submitPayment} loading={saving} label="Record Payment" />
+        </Modal>
+      )}
+
+      {/* Payment History Modal */}
+      {historyTarget && historyTarget.payment && (
+        <Modal title={`Payment History — ${historyTarget.booking.stallCode}`} onClose={() => setHistoryTarget(null)}>
+          <div style={{ marginBottom: '1rem', fontSize: 13, color: '#6B7280' }}>
+            {historyTarget.booking.companyName}
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+            <div style={{ flex: 1, padding: 12, background: '#F0FDF4', borderRadius: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: '#16A34A', fontWeight: 700, textTransform: 'uppercase' }}>Paid</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#16A34A' }}>{formatCurrency(historyTarget.payment.paidAmount)}</div>
+            </div>
+            <div style={{ flex: 1, padding: 12, background: '#FEF2F2', borderRadius: 10, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: '#DC2626', fontWeight: 700, textTransform: 'uppercase' }}>Remaining</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#DC2626' }}>{formatCurrency(historyTarget.payment.remainingAmount)}</div>
+            </div>
+          </div>
+          {historyTarget.payment.paymentRecords.map((r, i) => (
+            <div key={i} style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #E5E7EB', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E' }}>{formatCurrency(r.amount)}</span>
+                  <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, background: '#E6F4F4', color: '#0D4F4F', padding: '2px 8px', borderRadius: 100 }}>{r.method}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{formatDate(r.date)}</div>
+              </div>
+              {r.reference && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Ref: {r.reference}</div>}
+              {r.notes && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{r.notes}</div>}
+              <div style={{ fontSize: 11, color: '#D1D5DB', marginTop: 4 }}>Recorded by {r.recordedBy}</div>
+            </div>
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
+            <button onClick={() => setHistoryTarget(null)} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#0D4F4F', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Close</button>
+          </div>
+        </Modal>
+      )}
     </div>
-  )
+  );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E5E7EB', padding: '1.25rem' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 900, color }}>{value}</div>
+      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{sub}</div>
+    </div>
+  );
+}
+
+function PayStatusBadge({ status }: { status: 'unpaid' | 'partial' | 'paid' }) {
+  const styles: Record<string, { bg: string; color: string; label: string }> = {
+    paid: { bg: '#DCFCE7', color: '#16A34A', label: '✓ Paid' },
+    partial: { bg: '#FEF9C3', color: '#CA8A04', label: '⚡ Partial' },
+    unpaid: { bg: '#FEE2E2', color: '#DC2626', label: '✗ Unpaid' },
+  };
+  const s = styles[status];
+  return (
+    <span style={{ fontSize: 11, fontWeight: 700, background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 100 }}>{s.label}</span>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: '#fff', borderRadius: 16, padding: '1.75rem', width: '100%', maxWidth: 500, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#1A1A2E' }}>{title}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9CA3AF' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FormGroup({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
+  return (
+    <div style={{ marginBottom: '1rem' }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#4B5563', marginBottom: 6 }}>
+        {label}{required && <span style={{ color: '#EF4444' }}> *</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function ModalActions({ onCancel, onConfirm, loading, label }: { onCancel: () => void; onConfirm: () => void; loading: boolean; label: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: '1.25rem' }}>
+      <button onClick={onCancel} style={{ padding: '10px 20px', borderRadius: 10, border: '1.5px solid #E5E7EB', background: '#fff', color: '#6B7280', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+      <button onClick={onConfirm} disabled={loading} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: loading ? '#9CA3AF' : '#0D4F4F', color: '#fff', fontWeight: 700, fontSize: 14, cursor: loading ? 'not-allowed' : 'pointer' }}>
+        {loading ? 'Saving...' : label}
+      </button>
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  height: 44,
+  padding: '0 12px',
+  border: '1.5px solid #E5E7EB',
+  borderRadius: 10,
+  fontSize: 14,
+  color: '#1A1A2E',
+  outline: 'none',
+  boxSizing: 'border-box',
+  background: '#fff',
+};

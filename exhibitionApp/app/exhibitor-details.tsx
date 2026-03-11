@@ -1,668 +1,883 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
-  ActivityIndicator,
   Image,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import { CONTACT_PREFIXES, PRODUCT_SEGMENTS, COUNTRIES } from '@/constants/segments';
 import { useAuth } from '@/hooks/useAuth';
-import { ExhibitorService } from '@/services/exhibitorService';
-import { StallService } from '@/services/stallService';
-import { BookingService } from '@/services/bookingService';
-import type { ProductSegment, Stall } from '@/types';
-import { PRODUCT_SEGMENTS } from '@/types';
-import { AppTheme } from '@/constants/theme';
-
-const CONTACT_TITLES = ['Mr.', 'Mrs.', 'Ms.', 'Dr.'] as const;
-type ContactTitle = typeof CONTACT_TITLES[number];
-
-const countWords = (text: string) =>
-  text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+import {
+  getExhibitorByUserId,
+  createExhibitorProfile,
+  updateExhibitorProfile,
+  saveProductDetails,
+  uploadLogo,
+} from '@/lib/services/exhibitorService';
+import { ExhibitorModel } from '@/lib/models/exhibitor.model';
 
 export default function ExhibitorDetailsScreen() {
-  const { stallId, hallId } = useLocalSearchParams<{ stallId: string; hallId: string }>();
   const router = useRouter();
-  const { user, isExhibitor } = useAuth();
+  const { stallId, hallId } = useLocalSearchParams<{ stallId: string; hallId: string }>();
+  const { user, userModel } = useAuth();
 
-  const [stall, setStall] = useState<Stall | null>(null);
-  const [loadingStall, setLoadingStall] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [existingProfile, setExistingProfile] = useState<ExhibitorModel | null>(null);
 
-  const [name, setName] = useState('');
-  const [companyName, setCompanyName] = useState('');
+  // Profile fields
+  const [prefix, setPrefix] = useState('Mr.');
+  const [contactPerson, setContactPerson] = useState('');
+  const [companyName, setCompanyName] = useState(userModel?.displayName?.split(' ').slice(1).join(' ') || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [mobile, setMobile] = useState('');
+  const [telephone, setTelephone] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
+  const [state, setState] = useState('');
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
-  const [chiefExecutorName, setChiefExecutorName] = useState('');
-  const [contactTitle, setContactTitle] = useState<ContactTitle>('Mr.');
-  const [contactPersonName, setContactPersonName] = useState('');
-  const [designation, setDesignation] = useState('');
-  const [telephoneMobile, setTelephoneMobile] = useState('');
-  const [fax, setFax] = useState('');
-  const [companyEmail, setCompanyEmail] = useState('');
   const [website, setWebsite] = useState('');
-  const [gstNo, setGstNo] = useState('');
-  const [pan, setPan] = useState('');
-  const [tan, setTan] = useState('');
   const [companyProfile, setCompanyProfile] = useState('');
   const [ippfMember, setIppfMember] = useState(false);
+  const [membershipNumber, setMembershipNumber] = useState('');
   const [logoUri, setLogoUri] = useState<string | null>(null);
-  const [existingLogoUrl, setExistingLogoUrl] = useState<string | null>(null);
+  const [existingLogoUrl, setExistingLogoUrl] = useState<string>('');
 
-  const [selectedSegments, setSelectedSegments] = useState<ProductSegment[]>([]);
+  // Product details fields
+  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
   const [categories, setCategories] = useState('');
+  const [machineryDescription, setMachineryDescription] = useState('');
+  const [rawMaterialDescription, setRawMaterialDescription] = useState('');
 
-  const [submitting, setSubmitting] = useState(false);
-  const [showTitlePicker, setShowTitlePicker] = useState(false);
-
-  useEffect(() => {
-    if (!stallId) return;
-    StallService.getStall(stallId).then((s) => {
-      setStall(s);
-      setLoadingStall(false);
-    });
-  }, [stallId]);
+  // UI toggles
+  const [showPrefixPicker, setShowPrefixPicker] = useState(false);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
 
   useEffect(() => {
     if (!user) return;
-    ExhibitorService.getProfile(user.uid).then((profile) => {
-      if (!profile) return;
-      setName(profile.name ?? '');
-      setCompanyName(profile.companyName ?? '');
-      setAddress(profile.address ?? '');
-      setCity(profile.city ?? '');
-      setPincode(profile.pincode ?? '');
-      setCountry(profile.country ?? 'India');
-      setChiefExecutorName(profile.chiefExecutorName ?? '');
-      const stored = profile.contactPerson ?? '';
-      const matchedTitle = CONTACT_TITLES.find((t) => stored.startsWith(t));
-      if (matchedTitle) {
-        setContactTitle(matchedTitle);
-        setContactPersonName(stored.slice(matchedTitle.length).trim());
-      } else {
-        setContactPersonName(stored);
+    (async () => {
+      try {
+        const profile = await getExhibitorByUserId(user.uid);
+        if (profile) {
+          setExistingProfile(profile);
+          setPrefix(profile.contactPrefix || 'Mr.');
+          setContactPerson(profile.contactPerson || '');
+          setCompanyName(profile.companyName || '');
+          setEmail(profile.email || user.email || '');
+          setMobile(profile.mobile || '');
+          setTelephone(profile.telephone || '');
+          setAddress(profile.address || '');
+          setCity(profile.city || '');
+          setState(profile.state || '');
+          setPincode(profile.pincode || '');
+          setCountry(profile.country || 'India');
+          setWebsite(profile.website || '');
+          setCompanyProfile(profile.companyProfile || '');
+          setIppfMember(profile.ippfMember || false);
+          setMembershipNumber(profile.membershipNumber || '');
+          setExistingLogoUrl(profile.logoUrl || '');
+
+          if (profile.productDetails) {
+            setSelectedSegments(profile.productDetails.segments || []);
+            setCategories(profile.productDetails.categories?.join(', ') || '');
+            setMachineryDescription(profile.productDetails.machineryDescription || '');
+            setRawMaterialDescription(profile.productDetails.rawMaterialDescription || '');
+          }
+        }
+      } catch {
+        // No existing profile — that's fine
+      } finally {
+        setLoading(false);
       }
-      setDesignation(profile.designation ?? '');
-      setTelephoneMobile(profile.telephoneMobile ?? '');
-      setFax(profile.fax ?? '');
-      setCompanyEmail(profile.companyEmail ?? '');
-      setWebsite(profile.website ?? '');
-      setGstNo(profile.gstNo ?? '');
-      setPan(profile.pan ?? '');
-      setTan(profile.tan ?? '');
-      setCompanyProfile(profile.companyProfile ?? '');
-      setIppfMember(profile.ippfMember ?? false);
-      if (profile.companyLogo) setExistingLogoUrl(profile.companyLogo);
-    });
+    })();
   }, [user]);
 
-  const pickLogo = useCallback(async () => {
+  async function pickLogo() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access to upload a logo.');
+      Alert.alert('Permission needed', 'Please grant access to your photo library to upload a logo.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
+      quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
       setLogoUri(result.assets[0].uri);
     }
-  }, []);
+  }
 
-  const toggleSegment = (seg: ProductSegment) => {
+  function toggleSegment(seg: string) {
     setSelectedSegments((prev) =>
       prev.includes(seg) ? prev.filter((s) => s !== seg) : [...prev, seg]
     );
-  };
+  }
 
-  const handleSubmit = async () => {
-    if (!user || !stall) return;
-    if (!name.trim()) return Alert.alert('Required', 'Please enter your full name.');
+  async function handleSubmit() {
+    if (!contactPerson.trim()) return Alert.alert('Required', 'Please enter contact person name.');
     if (!companyName.trim()) return Alert.alert('Required', 'Please enter company name.');
+    if (!mobile.trim()) return Alert.alert('Required', 'Please enter mobile number.');
     if (!address.trim()) return Alert.alert('Required', 'Please enter address.');
     if (!city.trim()) return Alert.alert('Required', 'Please enter city.');
-    if (!telephoneMobile.trim()) return Alert.alert('Required', 'Please enter mobile number.');
-    if (!companyEmail.trim()) return Alert.alert('Required', 'Please enter company email.');
-    if (!designation.trim()) return Alert.alert('Required', 'Please enter designation.');
-    if (countWords(companyProfile) > 100)
-      return Alert.alert('Too long', 'Company profile must be 100 words or fewer.');
-    if (selectedSegments.length === 0)
-      return Alert.alert('Required', 'Please select at least one product segment.');
+    if (companyProfile.length > 0 && companyProfile.split(' ').length > 100) {
+      return Alert.alert('Too long', 'Company profile must be within 100 words.');
+    }
+    if (!user || !userModel) return;
 
-    setSubmitting(true);
+    setSaving(true);
     try {
-      let logoUrl = existingLogoUrl ?? undefined;
+      let finalLogoUrl = existingLogoUrl;
+
+      // Upload logo if new one was picked
       if (logoUri) {
-        logoUrl = await ExhibitorService.uploadCompanyLogo(user.uid, logoUri);
+        finalLogoUrl = await uploadLogo(user.uid, logoUri);
       }
 
       const profileData = {
-        name: name.trim(),
+        userId: user.uid,
+        contactPrefix: prefix,
+        contactPerson: contactPerson.trim(),
         companyName: companyName.trim(),
+        email: email.trim(),
+        mobile: mobile.trim(),
+        telephone: telephone.trim(),
         address: address.trim(),
         city: city.trim(),
+        state: state.trim(),
         pincode: pincode.trim(),
-        country: country.trim(),
-        chiefExecutorName: chiefExecutorName.trim(),
-        contactPerson: `${contactTitle} ${contactPersonName.trim()}` as any,
-        designation: designation.trim(),
-        telephoneMobile: telephoneMobile.trim(),
-        fax: fax.trim() || undefined,
-        companyEmail: companyEmail.trim(),
-        website: website.trim() || undefined,
-        gstNo: gstNo.trim() || undefined,
-        pan: pan.trim() || undefined,
-        tan: tan.trim() || undefined,
+        country,
+        website: website.trim(),
         companyProfile: companyProfile.trim(),
         ippfMember,
-        companyLogo: logoUrl,
-        isProfileComplete: true,
+        membershipNumber: ippfMember ? membershipNumber.trim() : '',
+        logoUrl: finalLogoUrl,
       };
 
-      const { id: exhibitorProfileId, error: profileError } =
-        await ExhibitorService.createOrUpdateProfile(user.uid, profileData);
-      if (profileError) throw new Error(profileError);
+      if (existingProfile) {
+        await updateExhibitorProfile(existingProfile.id, profileData);
+      } else {
+        await createExhibitorProfile(profileData);
+      }
 
-      await ExhibitorService.saveProductDetails(exhibitorProfileId, {
+      // Save product details
+      const exhibitorId = existingProfile?.id || user.uid;
+      await saveProductDetails(exhibitorId, {
+        exhibitorId,
         segments: selectedSegments,
-        categories: categories.trim(),
+        categories: categories
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean),
+        machineryDescription: machineryDescription.trim(),
+        rawMaterialDescription: rawMaterialDescription.trim(),
       });
 
-      const { bookingId, error: bookingError } = await BookingService.createBooking({
-        stallId: stall.id,
-        stallCode: stall.stallCode,
-        hallId: stall.hallId,
-        exhibitorId: exhibitorProfileId,
-        totalAmount: stall.price,
+      router.push({
+        pathname: '/booking/checkout',
+        params: { stallId, hallId },
       });
-      if (bookingError) throw new Error(bookingError);
-
-      Alert.alert(
-        'Booking Submitted!',
-        'Your booking request has been received. The admin will review and confirm your booking.',
-        [{ text: 'OK', onPress: () => router.replace('/(tabs)/bookings') }]
-      );
     } catch (err: any) {
-      Alert.alert('Error', err.message ?? 'Something went wrong. Please try again.');
+      Alert.alert('Error', err?.message || 'Could not save details. Please try again.');
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
-  };
+  }
 
-  if (!isExhibitor) {
+  const filteredCountries = COUNTRIES.filter((c) =>
+    c.toLowerCase().includes(countrySearch.toLowerCase())
+  );
+  const wordCount = companyProfile.trim()
+    ? companyProfile.trim().split(/\s+/).length
+    : 0;
+
+  if (loading) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Access denied.</Text>
+      <View style={styles.loaderCenter}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loaderText}>Loading your profile...</Text>
       </View>
     );
   }
-
-  if (loadingStall) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={AppTheme.primary} />
-      </View>
-    );
-  }
-
-  const wordCount = countWords(companyProfile);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color="#FFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Exhibitor Details</Text>
-        </View>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Exhibitor Details</Text>
+        <View style={{ width: 38 }} />
+      </View>
 
-        {stall && (
-          <View style={styles.stallCard}>
-            <View style={styles.stallCardRow}>
-              <Ionicons name="grid-outline" size={18} color={AppTheme.primary} />
-              <Text style={styles.stallCardLabel}>  Stall {stall.stallCode}</Text>
-            </View>
-            <View style={styles.stallCardRow}>
-              <Ionicons name="resize-outline" size={16} color="#6B7280" />
-              <Text style={styles.stallCardSub}>
-                {'  '}{stall.length}m x {stall.breadth}m  -  {stall.spaceType}
-              </Text>
-            </View>
-            <View style={styles.stallCardRow}>
-              <Ionicons name="pricetag-outline" size={16} color="#6B7280" />
-              <Text style={styles.stallCardPrice}>  Rs.{stall.price.toLocaleString('en-IN')}</Text>
-            </View>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Info Banner */}
+          <View style={styles.infoBanner}>
+            <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
+            <Text style={styles.infoBannerText}>
+              Fill in your company details. These will be printed in the exhibition directory and used for your booking.
+            </Text>
           </View>
-        )}
 
-        <SectionHeader title="Company Information" icon="business-outline" />
+          {/* ── Section 1: Company & Contact ── */}
+          <SectionHeader title="Company & Contact" icon="business-outline" />
 
-        <Field label="Full Name *" hint="Your name as representative">
-          <TextInput style={styles.input} value={name} onChangeText={setName}
-            placeholder="e.g. Rajesh Kumar" placeholderTextColor="#9CA3AF" />
-        </Field>
-
-        <Field label="Company Name *">
-          <TextInput style={styles.input} value={companyName} onChangeText={setCompanyName}
-            placeholder="e.g. Plastech Industries Pvt. Ltd." placeholderTextColor="#9CA3AF" />
-        </Field>
-
-        <Field label="Address *">
-          <TextInput style={[styles.input, styles.inputMultiline]} value={address}
-            onChangeText={setAddress} placeholder="Street / Building / Area"
-            placeholderTextColor="#9CA3AF" multiline numberOfLines={2} />
-        </Field>
-
-        <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Field label="City *">
-              <TextInput style={styles.input} value={city} onChangeText={setCity}
-                placeholder="Mumbai" placeholderTextColor="#9CA3AF" />
-            </Field>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Field label="Pincode">
-              <TextInput style={styles.input} value={pincode} onChangeText={setPincode}
-                placeholder="400001" placeholderTextColor="#9CA3AF"
-                keyboardType="numeric" maxLength={6} />
-            </Field>
-          </View>
-        </View>
-
-        <Field label="Country">
-          <TextInput style={styles.input} value={country} onChangeText={setCountry}
-            placeholder="India" placeholderTextColor="#9CA3AF" />
-        </Field>
-
-        <SectionHeader title="Contact Details" icon="call-outline" />
-
-        <Field label="Chief Executor Name">
-          <TextInput style={styles.input} value={chiefExecutorName}
-            onChangeText={setChiefExecutorName}
-            placeholder="MD / CEO / Director name" placeholderTextColor="#9CA3AF" />
-        </Field>
-
-        <Field label="Contact Person *">
-          <View style={styles.contactPersonRow}>
-            <TouchableOpacity style={styles.titlePicker}
-              onPress={() => setShowTitlePicker((v) => !v)}>
-              <Text style={styles.titlePickerText}>{contactTitle}</Text>
-              <Ionicons name="chevron-down" size={14} color="#6B7280" />
+          {/* Logo */}
+          <View style={styles.logoRow}>
+            <TouchableOpacity style={styles.logoBox} onPress={pickLogo}>
+              {logoUri || existingLogoUrl ? (
+                <Image
+                  source={{ uri: logoUri || existingLogoUrl }}
+                  style={styles.logoImage}
+                />
+              ) : (
+                <View style={styles.logoPlaceholder}>
+                  <Ionicons name="camera-outline" size={28} color={Colors.primary} />
+                  <Text style={styles.logoPlaceholderText}>Upload Logo</Text>
+                </View>
+              )}
             </TouchableOpacity>
-            <TextInput style={[styles.input, { flex: 1 }]} value={contactPersonName}
-              onChangeText={setContactPersonName}
-              placeholder="Contact person name" placeholderTextColor="#9CA3AF" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.logoHint}>Upload your company logo (1:1 ratio, JPG or PNG)</Text>
+              <TouchableOpacity onPress={pickLogo} style={styles.uploadBtn}>
+                <Text style={styles.uploadBtnText}>Choose from Gallery</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-          {showTitlePicker && (
-            <View style={styles.titleDropdown}>
-              {CONTACT_TITLES.map((t) => (
-                <TouchableOpacity key={t} style={styles.titleOption}
-                  onPress={() => { setContactTitle(t); setShowTitlePicker(false); }}>
-                  <Text style={[styles.titleOptionText, contactTitle === t && styles.titleOptionActive]}>
-                    {t}
-                  </Text>
+
+          {/* Contact Prefix Picker inline */}
+          <FormLabel label="Contact Person" required />
+          <View style={styles.prefixRow}>
+            <TouchableOpacity
+              style={styles.prefixBtn}
+              onPress={() => setShowPrefixPicker((v) => !v)}
+            >
+              <Text style={styles.prefixBtnText}>{prefix}</Text>
+              <Ionicons name="chevron-down" size={14} color={Colors.textMuted} />
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="Full Name"
+              placeholderTextColor={Colors.placeholder}
+              value={contactPerson}
+              onChangeText={setContactPerson}
+            />
+          </View>
+          {showPrefixPicker && (
+            <View style={styles.dropdownBox}>
+              {CONTACT_PREFIXES.map((p) => (
+                <TouchableOpacity
+                  key={p}
+                  style={styles.dropdownItem}
+                  onPress={() => { setPrefix(p); setShowPrefixPicker(false); }}
+                >
+                  <Text style={styles.dropdownItemText}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
-        </Field>
 
-        <Field label="Designation *">
-          <TextInput style={styles.input} value={designation} onChangeText={setDesignation}
-            placeholder="e.g. Sales Manager" placeholderTextColor="#9CA3AF" />
-        </Field>
+          <FormLabel label="Company Name" required />
+          <TextInput
+            style={styles.input}
+            placeholder="Your company / organisation name"
+            placeholderTextColor={Colors.placeholder}
+            value={companyName}
+            onChangeText={setCompanyName}
+          />
 
-        <Field label="Mobile / Telephone *">
-          <TextInput style={styles.input} value={telephoneMobile}
-            onChangeText={setTelephoneMobile} placeholder="+91 98765 43210"
-            placeholderTextColor="#9CA3AF" keyboardType="phone-pad" />
-        </Field>
+          <FormLabel label="Email Address" required />
+          <TextInput
+            style={styles.input}
+            placeholder="company@example.com"
+            placeholderTextColor={Colors.placeholder}
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
 
-        <Field label="Fax">
-          <TextInput style={styles.input} value={fax} onChangeText={setFax}
-            placeholder="Fax number (optional)" placeholderTextColor="#9CA3AF"
-            keyboardType="phone-pad" />
-        </Field>
+          <FormRow>
+            <View style={{ flex: 1 }}>
+              <FormLabel label="Mobile" required />
+              <TextInput
+                style={styles.input}
+                placeholder="+91 XXXXX XXXXX"
+                placeholderTextColor={Colors.placeholder}
+                value={mobile}
+                onChangeText={setMobile}
+                keyboardType="phone-pad"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FormLabel label="Telephone" />
+              <TextInput
+                style={styles.input}
+                placeholder="STD code + number"
+                placeholderTextColor={Colors.placeholder}
+                value={telephone}
+                onChangeText={setTelephone}
+                keyboardType="phone-pad"
+              />
+            </View>
+          </FormRow>
 
-        <Field label="Company Email *">
-          <TextInput style={styles.input} value={companyEmail} onChangeText={setCompanyEmail}
-            placeholder="info@company.com" placeholderTextColor="#9CA3AF"
-            keyboardType="email-address" autoCapitalize="none" />
-        </Field>
+          <FormLabel label="Website" />
+          <TextInput
+            style={styles.input}
+            placeholder="https://www.example.com"
+            placeholderTextColor={Colors.placeholder}
+            value={website}
+            onChangeText={setWebsite}
+            keyboardType="url"
+            autoCapitalize="none"
+          />
 
-        <Field label="Website">
-          <TextInput style={styles.input} value={website} onChangeText={setWebsite}
-            placeholder="https://www.company.com" placeholderTextColor="#9CA3AF"
-            autoCapitalize="none" keyboardType="url" />
-        </Field>
+          {/* ── Section 2: Address ── */}
+          <SectionHeader title="Address" icon="location-outline" />
 
-        <SectionHeader title="Tax & Registration" icon="document-text-outline" />
+          <FormLabel label="Address" required />
+          <TextInput
+            style={[styles.input, styles.multilineInput]}
+            placeholder="Street address, building, floor..."
+            placeholderTextColor={Colors.placeholder}
+            value={address}
+            onChangeText={setAddress}
+            multiline
+            numberOfLines={2}
+          />
 
-        <View style={styles.row}>
-          <View style={{ flex: 1, marginRight: 8 }}>
-            <Field label="GST No.">
-              <TextInput style={styles.input} value={gstNo} onChangeText={setGstNo}
-                placeholder="27XXXXXX1Z5" placeholderTextColor="#9CA3AF"
-                autoCapitalize="characters" />
-            </Field>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Field label="PAN">
-              <TextInput style={styles.input} value={pan} onChangeText={setPan}
-                placeholder="AAAAA0000A" placeholderTextColor="#9CA3AF"
-                autoCapitalize="characters" maxLength={10} />
-            </Field>
-          </View>
-        </View>
+          <FormRow>
+            <View style={{ flex: 1 }}>
+              <FormLabel label="City" required />
+              <TextInput
+                style={styles.input}
+                placeholder="City"
+                placeholderTextColor={Colors.placeholder}
+                value={city}
+                onChangeText={setCity}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FormLabel label="State / Province" />
+              <TextInput
+                style={styles.input}
+                placeholder="State"
+                placeholderTextColor={Colors.placeholder}
+                value={state}
+                onChangeText={setState}
+              />
+            </View>
+          </FormRow>
 
-        <Field label="TAN">
-          <TextInput style={styles.input} value={tan} onChangeText={setTan}
-            placeholder="MUMG12345X" placeholderTextColor="#9CA3AF"
-            autoCapitalize="characters" />
-        </Field>
-
-        <SectionHeader title="Company Profile" icon="information-circle-outline" />
-
-        <Field label={`Brief Company Profile (${wordCount}/100 words)`}>
-          <TextInput style={[styles.input, styles.profileInput]} value={companyProfile}
-            onChangeText={setCompanyProfile}
-            placeholder="Describe your company, products, and services in 100 words..."
-            placeholderTextColor="#9CA3AF" multiline numberOfLines={5}
-            textAlignVertical="top" />
-          {wordCount > 100 && (
-            <Text style={styles.wordCountError}>
-              Exceeds 100-word limit by {wordCount - 100} words
-            </Text>
-          )}
-        </Field>
-
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>IPPF Member?</Text>
-            <Text style={styles.toggleHint}>Indian Plastics Federation</Text>
-          </View>
-          <TouchableOpacity style={[styles.toggle, ippfMember && styles.toggleActive]}
-            onPress={() => setIppfMember((v) => !v)}>
-            <View style={[styles.toggleThumb, ippfMember && styles.toggleThumbActive]} />
-          </TouchableOpacity>
-        </View>
-
-        <SectionHeader title="Company Logo" icon="image-outline" />
-
-        <TouchableOpacity style={styles.logoPickerBtn} onPress={pickLogo}>
-          {logoUri ? (
-            <Image source={{ uri: logoUri }} style={styles.logoPreview} />
-          ) : existingLogoUrl ? (
-            <Image source={{ uri: existingLogoUrl }} style={styles.logoPreview} />
-          ) : (
-            <View style={styles.logoPlaceholder}>
-              <Ionicons name="cloud-upload-outline" size={32} color={AppTheme.primary} />
-              <Text style={styles.logoPlaceholderText}>Tap to upload logo</Text>
-              <Text style={styles.logoPlaceholderHint}>Square image recommended</Text>
+          <FormRow>
+            <View style={{ flex: 1 }}>
+              <FormLabel label="PIN / ZIP Code" />
+              <TextInput
+                style={styles.input}
+                placeholder="400001"
+                placeholderTextColor={Colors.placeholder}
+                value={pincode}
+                onChangeText={setPincode}
+                keyboardType="number-pad"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <FormLabel label="Country" />
+              <TouchableOpacity
+                style={[styles.input, styles.pickerInput]}
+                onPress={() => setShowCountryPicker((v) => !v)}
+              >
+                <Text style={styles.pickerInputText}>{country}</Text>
+                <Ionicons name="chevron-down" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          </FormRow>
+          {showCountryPicker && (
+            <View style={styles.dropdownBox}>
+              <TextInput
+                style={[styles.input, { marginBottom: Spacing.xs }]}
+                placeholder="Search country..."
+                placeholderTextColor={Colors.placeholder}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+              />
+              <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>
+                {filteredCountries.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={styles.dropdownItem}
+                    onPress={() => { setCountry(c); setShowCountryPicker(false); setCountrySearch(''); }}
+                  >
+                    <Text style={styles.dropdownItemText}>{c}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
-        </TouchableOpacity>
-        {(logoUri || existingLogoUrl) && (
-          <TouchableOpacity onPress={pickLogo} style={styles.changeLogoBtn}>
-            <Text style={styles.changeLogoText}>Change Logo</Text>
+
+          {/* ── Section 3: Company Profile ── */}
+          <SectionHeader title="Company Profile" icon="document-text-outline" />
+
+          <FormLabel label={`About your company (${wordCount}/100 words)`} />
+          <TextInput
+            style={[styles.input, styles.multilineInput, { height: 100 }]}
+            placeholder="Describe your company, products, and services in 100 words or less..."
+            placeholderTextColor={Colors.placeholder}
+            value={companyProfile}
+            onChangeText={setCompanyProfile}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
+          {wordCount > 100 && (
+            <Text style={styles.wordCountError}>Exceeds 100 word limit</Text>
+          )}
+
+          {/* IPPF Membership */}
+          <TouchableOpacity
+            style={styles.toggleRow}
+            onPress={() => setIppfMember((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.toggleInfo}>
+              <Text style={styles.toggleLabel}>IPPF Member</Text>
+              <Text style={styles.toggleSub}>Indian Plastic Products Federation</Text>
+            </View>
+            <View style={[styles.toggle, ippfMember && styles.toggleOn]}>
+              <View style={[styles.toggleThumb, ippfMember && styles.toggleThumbOn]} />
+            </View>
           </TouchableOpacity>
-        )}
 
-        <SectionHeader title="Product Details" icon="cube-outline" />
-
-        <Text style={[styles.fieldLabel, { marginHorizontal: 16 }]}>
-          Product Segments * (select all that apply)
-        </Text>
-        <View style={styles.segmentsGrid}>
-          {PRODUCT_SEGMENTS.map((seg) => {
-            const active = selectedSegments.includes(seg);
-            return (
-              <TouchableOpacity key={seg}
-                style={[styles.segmentChip, active && styles.segmentChipActive]}
-                onPress={() => toggleSegment(seg)}>
-                <Text style={[styles.segmentChipText, active && styles.segmentChipTextActive]}>
-                  {seg}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Field label="Product Categories" hint="Comma-separated list of specific products">
-          <TextInput style={[styles.input, styles.inputMultiline]} value={categories}
-            onChangeText={setCategories}
-            placeholder="e.g. HDPE Pipes, PP Granules, Injection Moulds"
-            placeholderTextColor="#9CA3AF" multiline numberOfLines={3} />
-        </Field>
-
-        <TouchableOpacity style={[styles.submitBtn, submitting && styles.submitBtnDisabled]}
-          onPress={handleSubmit} disabled={submitting}>
-          {submitting ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
+          {ippfMember && (
             <>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#FFF" />
-              <Text style={styles.submitBtnText}>  Submit Booking</Text>
+              <FormLabel label="Membership Number" />
+              <TextInput
+                style={styles.input}
+                placeholder="IPPF-XXXX"
+                placeholderTextColor={Colors.placeholder}
+                value={membershipNumber}
+                onChangeText={setMembershipNumber}
+              />
             </>
           )}
-        </TouchableOpacity>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* ── Section 4: Products & Segments ── */}
+          <SectionHeader title="Products & Segments" icon="cube-outline" />
+
+          <Text style={styles.segmentPrompt}>
+            Select all product segments you will be exhibiting (select multiple):
+          </Text>
+          <View style={styles.segmentsGrid}>
+            {PRODUCT_SEGMENTS.map((seg) => {
+              const active = selectedSegments.includes(seg);
+              return (
+                <TouchableOpacity
+                  key={seg}
+                  style={[styles.segment, active && styles.segmentActive]}
+                  onPress={() => toggleSegment(seg)}
+                  activeOpacity={0.8}
+                >
+                  {active && (
+                    <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
+                  )}
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    {seg}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <FormLabel label="Main Product / Categories" />
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. PET Bottles, HDPE Pipes, Plastic Moulds"
+            placeholderTextColor={Colors.placeholder}
+            value={categories}
+            onChangeText={setCategories}
+          />
+          <Text style={styles.hint}>Separate multiple categories with commas</Text>
+
+          <FormLabel label="Machinery Products Description" />
+          <TextInput
+            style={[styles.input, styles.multilineInput]}
+            placeholder="Describe any machinery or equipment you will be displaying..."
+            placeholderTextColor={Colors.placeholder}
+            value={machineryDescription}
+            onChangeText={setMachineryDescription}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
+
+          <FormLabel label="Raw Materials Description" />
+          <TextInput
+            style={[styles.input, styles.multilineInput]}
+            placeholder="Describe any raw materials or chemicals you will be displaying..."
+            placeholderTextColor={Colors.placeholder}
+            value={rawMaterialDescription}
+            onChangeText={setRawMaterialDescription}
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
+
+          {/* Submit */}
+          <TouchableOpacity
+            style={[styles.submitBtn, saving && styles.submitBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <>
+                <Text style={styles.submitBtnText}>Save & Continue to Booking</Text>
+                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+              </>
+            )}
+          </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionHeader({ title, icon }: { title: string; icon: string }) {
   return (
-    <View style={styles.sectionHeader}>
-      <Ionicons name={icon as any} size={18} color={AppTheme.primary} />
-      <Text style={styles.sectionTitle}>  {title}</Text>
+    <View style={sectionHeaderStyles.container}>
+      <View style={sectionHeaderStyles.iconWrap}>
+        <Ionicons name={icon as never} size={18} color={Colors.primary} />
+      </View>
+      <Text style={sectionHeaderStyles.title}>{title}</Text>
     </View>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+const sectionHeaderStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1.5,
+    borderBottomColor: Colors.primarySurface,
+  },
+  iconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: Colors.primarySurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: Typography.size.base,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+});
+
+function FormLabel({ label, required }: { label: string; required?: boolean }) {
   return (
-    <View style={styles.fieldWrapper}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      {hint && <Text style={styles.fieldHint}>{hint}</Text>}
-      {children}
-    </View>
+    <Text style={labelStyles.text}>
+      {label}
+      {required && <Text style={labelStyles.required}> *</Text>}
+    </Text>
   );
 }
+
+const labelStyles = StyleSheet.create({
+  text: {
+    fontSize: Typography.size.sm,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: 6,
+    marginTop: Spacing.sm,
+  },
+  required: { color: Colors.error },
+});
+
+function FormRow({ children }: { children: React.ReactNode }) {
+  return <View style={{ flexDirection: 'row', gap: Spacing.sm }}>{children}</View>;
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F9FAFB' },
-  contentContainer: { paddingBottom: 24 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' },
-  errorText: { color: '#EF4444', fontSize: 16 },
+  safe: { flex: 1, backgroundColor: Colors.background },
+  loaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.background,
+  },
+  loaderText: { fontSize: Typography.size.sm, color: Colors.textMuted },
+
   header: {
-    backgroundColor: AppTheme.deepTeal,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: Platform.OS === 'ios' ? 56 : 44,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-  },
-  backBtn: { marginRight: 12, padding: 4 },
-  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-  stallCard: {
-    margin: 16,
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 14,
-    borderLeftWidth: 4,
-    borderLeftColor: AppTheme.primary,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  stallCardRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  stallCardLabel: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  stallCardSub: { fontSize: 13, color: '#6B7280' },
-  stallCardPrice: { fontSize: 15, fontWeight: '700', color: AppTheme.primary },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginTop: 24,
-    marginBottom: 8,
-    paddingBottom: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.border,
   },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  fieldWrapper: { marginHorizontal: 16, marginBottom: 12 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 4 },
-  fieldHint: { fontSize: 11, color: '#9CA3AF', marginBottom: 4 },
-  input: {
-    backgroundColor: '#FFF',
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.surfaceVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: Typography.size.lg,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+
+  scrollContent: { padding: Spacing.base },
+
+  infoBanner: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+    marginBottom: Spacing.xs,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: Typography.size.sm,
+    color: Colors.primary,
+    lineHeight: 20,
+  },
+
+  // Logo
+  logoRow: {
+    flexDirection: 'row',
+    gap: Spacing.base,
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+  },
+  logoBox: {
+    width: 80,
+    height: 80,
+    borderRadius: Radius.md,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+  },
+  logoImage: { width: '100%', height: '100%' },
+  logoPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: Colors.primarySurface,
+  },
+  logoPlaceholderText: {
+    fontSize: Typography.size.xs,
+    color: Colors.primary,
+    fontWeight: '500',
+  },
+  logoHint: {
+    fontSize: Typography.size.xs,
+    color: Colors.textMuted,
+    marginBottom: Spacing.sm,
+    lineHeight: 18,
+  },
+  uploadBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: Radius.full,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#111827',
+    borderColor: Colors.primary,
+    alignSelf: 'flex-start',
   },
-  inputMultiline: { minHeight: 64, textAlignVertical: 'top' },
-  profileInput: { minHeight: 100 },
-  wordCountError: { fontSize: 11, color: '#EF4444', marginTop: 4 },
-  row: { flexDirection: 'row', marginHorizontal: 16 },
-  contactPersonRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  titlePicker: {
+  uploadBtnText: { fontSize: Typography.size.xs, fontWeight: '600', color: Colors.primary },
+
+  // Input
+  input: {
+    height: 48,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    fontSize: Typography.size.sm,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.white,
+  },
+  multilineInput: { height: 'auto', paddingVertical: Spacing.md },
+  pickerInput: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+  },
+  pickerInputText: { fontSize: Typography.size.sm, color: Colors.textPrimary },
+
+  // Prefix row
+  prefixRow: { flexDirection: 'row', gap: Spacing.sm },
+  prefixBtn: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
+    paddingHorizontal: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.white,
+    minWidth: 70,
   },
-  titlePickerText: { fontSize: 14, color: '#111827', fontWeight: '600' },
-  titleDropdown: {
-    position: 'absolute',
-    top: 44,
-    left: 0,
-    backgroundColor: '#FFF',
+  prefixBtnText: { fontSize: Typography.size.sm, color: Colors.textPrimary, fontWeight: '600' },
+
+  // Dropdown
+  dropdownBox: {
+    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    zIndex: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    marginTop: 4,
+    padding: Spacing.sm,
+    ...Shadow.sm,
   },
-  titleOption: { paddingHorizontal: 16, paddingVertical: 10 },
-  titleOptionText: { fontSize: 14, color: '#374151' },
-  titleOptionActive: { color: AppTheme.primary, fontWeight: '700' },
+  dropdownItem: {
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  dropdownItemText: { fontSize: Typography.size.sm, color: Colors.textPrimary },
+
+  // Toggle
   toggleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: '#FFF',
-    borderRadius: 8,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    padding: 12,
+    borderColor: Colors.border,
+    marginTop: Spacing.md,
   },
-  toggleLabel: { fontSize: 14, fontWeight: '600', color: '#111827' },
-  toggleHint: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
+  toggleInfo: { flex: 1 },
+  toggleLabel: { fontSize: Typography.size.sm, fontWeight: '600', color: Colors.textPrimary },
+  toggleSub: { fontSize: Typography.size.xs, color: Colors.textMuted, marginTop: 2 },
   toggle: {
-    width: 48,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#D1D5DB',
-    justifyContent: 'center',
-    padding: 3,
-  },
-  toggleActive: { backgroundColor: AppTheme.primary },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFF' },
-  toggleThumbActive: { alignSelf: 'flex-end' },
-  logoPickerBtn: {
-    marginHorizontal: 16,
-    marginBottom: 8,
+    width: 44,
+    height: 24,
     borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    borderStyle: 'dashed',
-  },
-  logoPlaceholder: {
-    height: 120,
+    backgroundColor: Colors.border,
+    padding: 2,
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    gap: 6,
   },
-  logoPlaceholderText: { fontSize: 14, fontWeight: '600', color: AppTheme.primary },
-  logoPlaceholderHint: { fontSize: 11, color: '#9CA3AF' },
-  logoPreview: { width: '100%', height: 160, resizeMode: 'contain', backgroundColor: '#F9FAFB' },
-  changeLogoBtn: { marginHorizontal: 16, marginBottom: 12, alignSelf: 'flex-start' },
-  changeLogoText: { fontSize: 13, color: AppTheme.primary, fontWeight: '600' },
+  toggleOn: { backgroundColor: Colors.primary },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    ...Shadow.sm,
+  },
+  toggleThumbOn: { alignSelf: 'flex-end' },
+
+  wordCountError: {
+    fontSize: Typography.size.xs,
+    color: Colors.error,
+    marginTop: 4,
+  },
+  hint: {
+    fontSize: Typography.size.xs,
+    color: Colors.textMuted,
+    marginTop: 4,
+  },
+
+  // Segments
+  segmentPrompt: {
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+    lineHeight: 20,
+  },
   segmentsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: 12,
-    marginBottom: 16,
-    gap: 8,
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
   },
-  segmentChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    backgroundColor: '#FFF',
-  },
-  segmentChipActive: {
-    backgroundColor: AppTheme.primarySoft,
-    borderColor: AppTheme.primary,
-  },
-  segmentChipText: { fontSize: 12, color: '#6B7280' },
-  segmentChipTextActive: { color: AppTheme.primaryDark, fontWeight: '600' },
-  submitBtn: {
+  segment: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: AppTheme.primary,
-    marginHorizontal: 16,
-    marginTop: 24,
-    paddingVertical: 16,
-    borderRadius: 12,
-    shadowColor: AppTheme.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  segmentActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySurface,
+  },
+  segmentText: {
+    fontSize: Typography.size.xs,
+    fontWeight: '500',
+    color: Colors.textSecondary,
+  },
+  segmentTextActive: { color: Colors.primary, fontWeight: '700' },
+
+  // Submit
+  submitBtn: {
+    marginTop: Spacing.xl,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    height: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    ...Shadow.md,
   },
   submitBtnDisabled: { opacity: 0.6 },
-  submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  submitBtnText: { color: Colors.white, fontSize: Typography.size.base, fontWeight: '700' },
 });

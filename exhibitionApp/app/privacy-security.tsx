@@ -12,17 +12,13 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack } from 'expo-router';
-
-import { ThemedView } from '@/components/themed-view';
-import { ThemedText } from '@/components/themed-text';
-import { AppTheme, BrandColors, Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { updatePassword } from 'firebase/auth';
+import { auth } from '@/lib/firebase/config';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { Colors } from '@/constants/theme';
 
 export default function PrivacySecurityScreen() {
-  const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
@@ -49,11 +45,8 @@ export default function PrivacySecurityScreen() {
     try {
       setChangingPassword(true);
 
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-
-      if (error) throw error;
+      if (!auth.currentUser) throw new Error('Not logged in');
+      await updatePassword(auth.currentUser, newPassword);
 
       Alert.alert('Success', 'Password updated successfully');
       setPasswordModalVisible(false);
@@ -111,21 +104,21 @@ export default function PrivacySecurityScreen() {
       title: 'Change Password',
       subtitle: 'Update your account password',
       onPress: () => setPasswordModalVisible(true),
-      color: AppTheme.deepTeal,
+      color: Colors.primary,
     },
     {
       icon: 'phone-portrait-outline' as const,
       title: 'Two-Factor Authentication',
       subtitle: 'Add extra security to your account',
       onPress: () => Alert.alert('Coming Soon', 'Two-factor authentication will be available soon!'),
-      color: AppTheme.primary,
+      color: Colors.primary,
     },
     {
       icon: 'time-outline' as const,
       title: 'Login History',
       subtitle: 'View your recent login activity',
       onPress: () => Alert.alert('Coming Soon', 'Login history will be available soon!'),
-      color: AppTheme.deepTealLight,
+      color: Colors.primaryLight,
     },
   ];
 
@@ -135,7 +128,7 @@ export default function PrivacySecurityScreen() {
       title: 'Export My Data',
       subtitle: 'Download a copy of your data',
       onPress: handleExportData,
-      color: AppTheme.primary,
+      color: Colors.primary,
       danger: false,
     },
     {
@@ -149,10 +142,10 @@ export default function PrivacySecurityScreen() {
   ];
 
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
       <LinearGradient
-        colors={[AppTheme.deepTeal, AppTheme.deepTealLight]}
+        colors={[Colors.primary, Colors.primaryLight]}
         style={[styles.header, { paddingTop: insets.top + 8 }]}
       >
         <View style={styles.headerRow}>
@@ -160,20 +153,20 @@ export default function PrivacySecurityScreen() {
             <Ionicons name="arrow-back" size={20} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerTextWrap}>
-            <ThemedText type="title" style={styles.headerTitle}>Privacy & Security</ThemedText>
-            <ThemedText style={styles.headerSubtitle}>Manage your account security</ThemedText>
+            <Text style={styles.headerTitle}>Privacy &amp; Security</Text>
+            <Text style={styles.headerSubtitle}>Manage your account security</Text>
           </View>
           <View style={{ width: 36 }} />
         </View>
       </LinearGradient>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={[styles.section, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+        <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <View style={[styles.sectionIconWrap, { backgroundColor: AppTheme.deepTealSoft }]}>
-              <Ionicons name="lock-closed-outline" size={18} color={AppTheme.deepTeal} />
+            <View style={[styles.sectionIconWrap, { backgroundColor: Colors.primarySurface }]}>
+              <Ionicons name="lock-closed-outline" size={18} color={Colors.primary} />
             </View>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>Security</ThemedText>
+            <Text style={styles.sectionTitle}>Security</Text>
           </View>
           
           {securityOptions.map((option, index) => (
@@ -186,23 +179,23 @@ export default function PrivacySecurityScreen() {
                 <Ionicons name={option.icon} size={20} color={option.color} />
               </View>
               <View style={styles.optionInfo}>
-                <ThemedText style={styles.optionTitle}>{option.title}</ThemedText>
-                <ThemedText style={[styles.optionSubtitle, { color: Colors[colorScheme ?? 'light'].icon }]}>
+                <Text style={styles.optionTitle}>{option.title}</Text>
+                <Text style={[styles.optionSubtitle, { color: Colors.textMuted }]}>
                   {option.subtitle}
-                </ThemedText>
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors[colorScheme ?? 'light'].icon} />
+              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Privacy Section */}
-        <View style={[styles.section, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+        <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
             <View style={[styles.sectionIconWrap, { backgroundColor: '#E0F9E7' }]}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={AppTheme.primary} />
+              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
             </View>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>Privacy</ThemedText>
+            <Text style={styles.sectionTitle}>Privacy</Text>
           </View>
           
           {privacyOptions.map((option, index) => (
@@ -215,36 +208,32 @@ export default function PrivacySecurityScreen() {
                 <Ionicons name={option.icon} size={20} color={option.color} />
               </View>
               <View style={styles.optionInfo}>
-                <ThemedText style={[styles.optionTitle, option.danger && { color: '#EF4444' }]}>
+                <Text style={[styles.optionTitle, option.danger && { color: '#EF4444' }]}>
                   {option.title}
-                </ThemedText>
-                <ThemedText style={[styles.optionSubtitle, { color: Colors[colorScheme ?? 'light'].icon }]}>
+                </Text>
+                <Text style={[styles.optionSubtitle, { color: Colors.textMuted }]}>
                   {option.subtitle}
-                </ThemedText>
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors[colorScheme ?? 'light'].icon} />
+              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={[styles.section, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
+        <View style={styles.section}>
           <View style={styles.sectionHeaderRow}>
-            <View style={[styles.sectionIconWrap, { backgroundColor: AppTheme.deepTealSoft }]}>
-              <Ionicons name="information-circle-outline" size={18} color={AppTheme.deepTeal} />
+            <View style={[styles.sectionIconWrap, { backgroundColor: Colors.primarySurface }]}>
+              <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
             </View>
-            <ThemedText type="subtitle" style={styles.sectionTitle}>Account Information</ThemedText>
+            <Text style={styles.sectionTitle}>Account Information</Text>
           </View>
           <View style={styles.infoRow}>
-            <ThemedText style={[styles.infoLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
-              Email
-            </ThemedText>
-            <ThemedText style={styles.infoValue}>{user?.email}</ThemedText>
+            <Text style={[styles.infoLabel, { color: Colors.textMuted }]}>Email</Text>
+            <Text style={styles.infoValue}>{user?.email}</Text>
           </View>
           <View style={styles.infoRow}>
-            <ThemedText style={[styles.infoLabel, { color: Colors[colorScheme ?? 'light'].icon }]}>
-              Account ID
-            </ThemedText>
-            <ThemedText style={styles.infoValue}>{user?.id.slice(0, 8)}...</ThemedText>
+            <Text style={[styles.infoLabel, { color: Colors.textMuted }]}>Account ID</Text>
+            <Text style={styles.infoValue}>{user?.uid?.slice(0, 8)}...</Text>
           </View>
         </View>
       </ScrollView>
@@ -257,30 +246,22 @@ export default function PrivacySecurityScreen() {
         onRequestClose={() => setPasswordModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: Colors[colorScheme ?? 'light'].surface }]}>
-            <ThemedText type="subtitle" style={styles.modalTitle}>Change Password</ThemedText>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Change Password</Text>
             
             <TextInput
-              style={[styles.input, { 
-                backgroundColor: Colors[colorScheme ?? 'light'].background,
-                color: Colors[colorScheme ?? 'light'].text,
-                borderColor: Colors[colorScheme ?? 'light'].border,
-              }]}
+              style={styles.input}
               placeholder="New Password"
-              placeholderTextColor={Colors[colorScheme ?? 'light'].icon}
+              placeholderTextColor={Colors.textMuted}
               secureTextEntry
               value={newPassword}
               onChangeText={setNewPassword}
             />
             
             <TextInput
-              style={[styles.input, { 
-                backgroundColor: Colors[colorScheme ?? 'light'].background,
-                color: Colors[colorScheme ?? 'light'].text,
-                borderColor: Colors[colorScheme ?? 'light'].border,
-              }]}
+              style={styles.input}
               placeholder="Confirm New Password"
-              placeholderTextColor={Colors[colorScheme ?? 'light'].icon}
+              placeholderTextColor={Colors.textMuted}
               secureTextEntry
               value={confirmPassword}
               onChangeText={setConfirmPassword}
@@ -300,7 +281,7 @@ export default function PrivacySecurityScreen() {
                 disabled={changingPassword}
               >
                 <LinearGradient
-                  colors={[AppTheme.deepTeal, AppTheme.deepTealLight]}
+                  colors={[Colors.primary, Colors.primaryLight]}
                   style={styles.confirmButtonGradient}
                 >
                   <Text style={styles.confirmButtonText}>
@@ -312,13 +293,14 @@ export default function PrivacySecurityScreen() {
           </View>
         </View>
       </Modal>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   header: {
     paddingTop: 54,
@@ -435,10 +417,14 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 20,
     padding: 24,
+    backgroundColor: Colors.white,
   },
   modalTitle: {
     textAlign: 'center',
     marginBottom: 20,
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.textPrimary,
   },
   input: {
     borderWidth: 1,
@@ -447,6 +433,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
     marginBottom: 16,
+    backgroundColor: Colors.background,
+    color: Colors.textPrimary,
+    borderColor: Colors.border,
   },
   modalButtons: {
     flexDirection: 'row',

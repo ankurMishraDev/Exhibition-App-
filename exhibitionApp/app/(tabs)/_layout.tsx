@@ -1,42 +1,35 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Typography } from '@/constants/theme';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { Colors, AppTheme, BrandColors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const insets = useSafeAreaInsets();
-
+export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: AppTheme.primary,
-        tabBarInactiveTintColor: isDark ? BrandColors.gray[500] : BrandColors.gray[400],
         headerShown: false,
-        tabBarButton: HapticTab,
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.textMuted,
         tabBarStyle: {
-          backgroundColor: isDark ? BrandColors.gray[900] : '#fff',
-          borderTopColor: isDark ? BrandColors.gray[800] : BrandColors.gray[100],
-          height: 60 + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
-          paddingTop: 8,
+          backgroundColor: Colors.white,
+          borderTopWidth: 1,
+          borderTopColor: Colors.border,
+          paddingBottom: 6,
+          paddingTop: 6,
+          height: 62,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          fontSize: Typography.size.xs,
+          fontWeight: '600',
+          marginTop: 2,
         },
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Events',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />
@@ -44,8 +37,8 @@ export default function TabLayout() {
         name="bookings"
         options={{
           title: 'Bookings',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "ticket" : "ticket-outline"} size={24} color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="ticket" size={size} color={color} />
           ),
         }}
       />
@@ -53,8 +46,8 @@ export default function TabLayout() {
         name="history"
         options={{
           title: 'History',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "time" : "time-outline"} size={24} color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="time" size={size} color={color} />
           ),
         }}
       />
@@ -62,8 +55,8 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
           ),
         }}
       />

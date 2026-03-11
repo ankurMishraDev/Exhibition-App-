@@ -1,32 +1,61 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { Colors } from '@/constants/theme';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { AuthProvider } from '@/hooks/useAuth';
+function AuthGate() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+  useEffect(() => {
+    if (loading) return;
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+    const inAuthGroup = segments[0] === '(auth)';
+
+    if (!user && !inAuthGroup) {
+      router.replace('/(auth)/login');
+    } else if (user && inAuthGroup) {
+      router.replace('/(tabs)');
+    }
+  }, [user, loading, segments]);
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="hall-selection/index" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="exhibitor-details" options={{ animation: 'slide_from_right' }} />
+      <Stack.Screen name="booking/checkout" options={{ animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="notifications" options={{ animation: 'slide_from_right' }} />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="hall-selection/index" options={{ headerShown: false }} />
-          <Stack.Screen name="hall/[hallId]" options={{ headerShown: false }} />
-          <Stack.Screen name="booking/[stallId]" options={{ headerShown: false }} />
-          <Stack.Screen name="exhibitor-details" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <StatusBar style="auto" />
+      <AuthGate />
     </AuthProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loader: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+  },
+});

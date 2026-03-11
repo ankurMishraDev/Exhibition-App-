@@ -1,509 +1,265 @@
+﻿import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  SectionList,
+  StyleSheet,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BrandColors, Colors, AppTheme } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { PaymentsAPI } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
-import { Payment } from '@/types';
+import { getExhibitorBookings } from '@/lib/services/bookingService';
+import { BookingModel, BookingStatus } from '@/lib/models/booking.model';
+
+type HistorySection = { title: string; data: BookingModel[] };
+
+const COMPLETED_STATUSES: BookingStatus[] = ['approved', 'rejected', 'cancelled'];
 
 export default function HistoryScreen() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const insets = useSafeAreaInsets();
-  const { user } = useAuth();
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
+  const { user, isVisitor } = useAuth();
+  const [sections, setSections] = useState<HistorySection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchPayments = useCallback(async () => {
-    if (!user) {
-      setLoading(false);
-      setPayments([]);
-      return;
-    }
-    
-    try {
-      setError(null);
-      const response = await PaymentsAPI.getPaymentHistory(user.id);
-      
-      if (response.data) {
-        setPayments(response.data);
-      } else if (response.error) {
-        console.error('Failed to fetch payments:', response.error);
-        setError(response.error);
-        setPayments([]);
-      }
-    } catch (error: any) {
-      console.error('Failed to fetch payments:', error);
-      setError(error.message || 'An unexpected error occurred');
-      setPayments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
 
   useEffect(() => {
-    fetchPayments();
-
-    // Setup Realtime subscription for new payments
-    if (!user) return;
-
-    const channel = supabase
-      .channel('user-payments')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'payments',
-          filter: `user_id=eq.${user.id}`,
-        },
-        () => {
-          console.log('[Realtime] New payment created, refreshing history');
-          fetchPayments();
+    if (!user || isVisitor) {
+      setLoading(false);
+      return;
+    }
+    (async () => {
+      try {
+        const bookings = await getExhibitorBookings(user.uid);
+        const completed = bookings.filter((b) =>
+          COMPLETED_STATUSES.includes(b.status)
+        );
+        // Group by month/year
+        const groupMap = new Map<string, BookingModel[]>();
+        for (const booking of completed) {
+          const date = new Date(booking.createdAt);
+          const key = date.toLocaleDateString('en-IN', {
+            month: 'long',
+            year: 'numeric',
+          });
+          if (!groupMap.has(key)) groupMap.set(key, []);
+          groupMap.get(key)!.push(booking);
         }
-      )
-      .subscribe();
+        const grouped: HistorySection[] = Array.from(groupMap.entries()).map(
+          ([title, data]) => ({ title, data })
+        );
+        setSections(grouped);
+      } catch {
+        // silent fail
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [user, isVisitor]);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, fetchPayments]);
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchPayments();
-    setRefreshing(false);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const formatPrice = (price: number) => {
-    return `₹${price.toLocaleString('en-IN')}`;
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'captured':
-        return AppTheme.primary;
-      case 'failed':
-        return '#EF4444';
-      case 'refunded':
-        return BrandColors.orange[500];
-      default:
-        return BrandColors.gray[500];
-    }
-  };
-
-  const getStatusIcon = (status: string): string => {
-    switch (status) {
-      case 'captured':
-        return 'checkmark-circle';
-      case 'failed':
-        return 'close-circle';
-      case 'refunded':
-        return 'refresh-circle';
-      default:
-        return 'time';
-    }
-  };
-
-  const getPaymentMethodIcon = (method?: string): string => {
-    switch (method) {
-      case 'upi':
-        return 'phone-portrait';
-      case 'card':
-        return 'card';
-      case 'netbanking':
-        return 'business';
-      case 'wallet':
-        return 'wallet';
-      case 'mock':
-        return 'flask';
-      default:
-        return 'cash';
-    }
-  };
-
-  const renderPaymentCard = (payment: Payment) => (
-    <TouchableOpacity
-      key={payment.id}
-      style={[styles.paymentCard, { backgroundColor: isDark ? BrandColors.gray[800] : '#fff' }]}
-      onPress={() => {
-        router.push({ pathname: '/payment-receipt', params: { paymentId: payment.id } });
-      }}
-    >
-      <View style={styles.paymentHeader}>
-        <View style={[styles.paymentIconContainer, { backgroundColor: getStatusColor(payment.status) + '20' }]}>
-          <Ionicons name={getStatusIcon(payment.status) as any} size={24} color={getStatusColor(payment.status)} />
+  if (isVisitor) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.screenHeader}>
+          <Text style={styles.screenHeaderTitle}>History</Text>
         </View>
-        <View style={styles.paymentInfo}>
-          <ThemedText style={[styles.amount, { color: getStatusColor(payment.status) }]}>
-            {formatPrice(payment.amount)}
-          </ThemedText>
-          <ThemedText style={[styles.paymentLabel, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-            {payment.booking?.event?.title || 'Event'} - Stall #{payment.booking?.stall?.stall_number || 'N/A'}
-          </ThemedText>
+        <View style={styles.emptyState}>
+          <Ionicons name="time-outline" size={64} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>Exhibitor Feature</Text>
+          <Text style={styles.emptySubtitle}>Booking history is only available for exhibitors.</Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(payment.status) + '20' }]}>
-          <ThemedText style={[styles.statusText, { color: getStatusColor(payment.status) }]}>
-            {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
-          </ThemedText>
-        </View>
-      </View>
-
-      <View style={styles.paymentDetails}>
-        <View style={styles.detailRow}>
-          <Ionicons name={getPaymentMethodIcon(payment.method) as any} size={16} color={isDark ? BrandColors.gray[400] : BrandColors.gray[500]} />
-          <ThemedText style={[styles.detailLabel, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-            {payment.method ? payment.method.toUpperCase() : 'N/A'}
-          </ThemedText>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Ionicons name="receipt-outline" size={16} color={isDark ? BrandColors.gray[400] : BrandColors.gray[500]} />
-          <ThemedText style={[styles.detailLabel, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]} numberOfLines={1}>
-            {payment.razorpay_payment_id || payment.id.slice(0, 12) + '...'}
-          </ThemedText>
-        </View>
-
-        <View style={styles.detailRow}>
-          <Ionicons name="calendar-outline" size={16} color={isDark ? BrandColors.gray[400] : BrandColors.gray[500]} />
-          <ThemedText style={[styles.detailLabel, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-            {formatDate(payment.created_at)}
-          </ThemedText>
-        </View>
-      </View>
-
-      {payment.status === 'failed' && (
-        <View style={[styles.failedNotice, { backgroundColor: isDark ? '#3F1D1D' : '#FEF2F2' }]}>
-          <Ionicons name="alert-circle" size={16} color="#EF4444" />
-          <ThemedText style={styles.failedText}>
-            Payment failed. Please try again or contact support.
-          </ThemedText>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-
-  const calculateTotalSpent = () => {
-    if (!payments || !Array.isArray(payments) || payments.length === 0) {
-      return 0;
-    }
-    return payments
-      .filter(p => p.status === 'captured')
-      .reduce((total, payment) => total + payment.amount, 0);
-  };
-
-  const getSuccessfulPayments = () => {
-    if (!payments || !Array.isArray(payments)) {
-      return 0;
-    }
-    return payments.filter(p => p.status === 'captured').length;
-  };
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <ThemedView style={styles.container}>
-      <View style={[styles.header, { backgroundColor: isDark ? BrandColors.gray[900] : '#fff', paddingTop: insets.top + 8 }]}>
-        <ThemedText style={styles.headerTitle}>
-          Payment History
-        </ThemedText>
-        <ThemedText style={[styles.headerSubtitle, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-          Track all your exhibition payments
-        </ThemedText>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenHeaderTitle}>History</Text>
       </View>
 
       {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={AppTheme.primary} />
-          <ThemedText style={[styles.loadingText, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-            Loading payment history...
-          </ThemedText>
+        <View style={styles.loaderCenter}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : sections.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Ionicons name="time-outline" size={64} color={Colors.textMuted} />
+          <Text style={styles.emptyTitle}>No history yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Completed, approved, or rejected bookings will appear here
+          </Text>
         </View>
       ) : (
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.scrollContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AppTheme.primary} />
-          }
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-        >
-          {error ? (
-            <View style={styles.errorState}>
-              <View style={[styles.errorIconContainer, { backgroundColor: BrandColors.orange[50] }]}>
-                <Ionicons name="warning" size={40} color={BrandColors.orange[500]} />
-              </View>
-              <ThemedText style={[styles.errorTitle, { color: BrandColors.orange[600] }]}>{error}</ThemedText>
-              <TouchableOpacity
-                style={[styles.retryButton, { backgroundColor: AppTheme.primary }]}
-                onPress={onRefresh}
-              >
-                <Ionicons name="refresh" size={18} color="#fff" />
-                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
-              </TouchableOpacity>
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
             </View>
-          ) : (
-            <>
-              {/* Summary Stats */}
-              {payments && payments.length > 0 && (
-                <View style={[styles.summaryCard, { backgroundColor: isDark ? BrandColors.gray[800] : '#fff' }]}>
-                  <View style={styles.summaryStats}>
-                    <View style={styles.statItem}>
-                      <View style={[styles.statIconContainer, { backgroundColor: AppTheme.primarySoft }]}>
-                        <Ionicons name="wallet" size={24} color={AppTheme.primary} />
-                      </View>
-                      <ThemedText style={[styles.statValue, { color: AppTheme.primary }]}>
-                        {formatPrice(calculateTotalSpent())}
-                      </ThemedText>
-                      <ThemedText style={[styles.statLabel, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-                        Total Spent
-                      </ThemedText>
-                    </View>
-                    
-                    <View style={styles.statItem}>
-                      <View style={[styles.statIconContainer, { backgroundColor: AppTheme.secondarySoft }]}>
-                        <Ionicons name="checkmark-done" size={24} color={AppTheme.secondary} />
-                      </View>
-                      <ThemedText style={[styles.statValue, { color: AppTheme.secondary }]}>
-                        {getSuccessfulPayments()}
-                      </ThemedText>
-                      <ThemedText style={[styles.statLabel, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-                        Successful
-                      </ThemedText>
-                    </View>
-                  </View>
-                </View>
-              )}
-
-              {/* Payment History */}
-              {payments && payments.length > 0 ? (
-                payments.map(renderPaymentCard)
-              ) : (
-                <View style={styles.emptyState}>
-                  <View style={[styles.emptyIconContainer, { backgroundColor: AppTheme.primarySoft }]}>
-                    <Ionicons name="card-outline" size={48} color={AppTheme.primary} />
-                  </View>
-                  <ThemedText style={styles.emptyTitle}>No Payment History</ThemedText>
-                  <ThemedText style={[styles.emptyText, { color: isDark ? BrandColors.gray[400] : BrandColors.gray[500] }]}>
-                    Your completed payments will appear here
-                  </ThemedText>
-                </View>
-              )}
-            </>
           )}
-        </ScrollView>
+          renderItem={({ item }) => <HistoryCard booking={item} />}
+          stickySectionHeadersEnabled={false}
+        />
       )}
-    </ThemedView>
+    </SafeAreaView>
   );
 }
 
+// ─── HistoryCard ──────────────────────────────────────────────────────────────
+
+function HistoryCard({ booking }: { booking: BookingModel }) {
+  const { color, bg, icon, label } = getStatusStyle(booking.status);
+  const createdDate = new Date(booking.createdAt).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardLeft}>
+        <View style={[styles.statusIcon, { backgroundColor: bg }]}>
+          <Ionicons name={icon as never} size={20} color={color} />
+        </View>
+      </View>
+      <View style={styles.cardRight}>
+        <View style={styles.cardTopRow}>
+          <Text style={styles.stallCode}>{booking.stallCode}</Text>
+          <View style={[styles.statusPill, { backgroundColor: bg }]}>
+            <Text style={[styles.statusPillText, { color }]}>{label}</Text>
+          </View>
+        </View>
+        <Text style={styles.hallName}>{booking.hallName}</Text>
+        <View style={styles.cardMeta}>
+          <Text style={styles.metaText}>{createdDate}</Text>
+          <Text style={styles.metaDot}>·</Text>
+          <Text style={[styles.metaText, styles.price]}>
+            ₹{booking.totalAmount.toLocaleString('en-IN')}
+          </Text>
+        </View>
+        {booking.adminNotes && (
+          <Text style={styles.adminNote} numberOfLines={2}>
+            {`"${booking.adminNotes}"`}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function getStatusStyle(status: BookingStatus) {
+  switch (status) {
+    case 'approved':
+      return { color: Colors.available, bg: Colors.availableLight, icon: 'checkmark-circle', label: 'Approved' };
+    case 'rejected':
+      return { color: Colors.error, bg: '#FEE2E2', icon: 'close-circle', label: 'Rejected' };
+    case 'cancelled':
+      return { color: Colors.textMuted, bg: Colors.surfaceVariant, icon: 'ban', label: 'Cancelled' };
+    default:
+      return { color: Colors.textMuted, bg: Colors.surfaceVariant, icon: 'help-circle', label: status };
+  }
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  safe: { flex: 1, backgroundColor: Colors.background },
+  loaderCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  screenHeader: {
+    paddingHorizontal: Spacing.base,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.md,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+  screenHeaderTitle: {
+    fontSize: Typography.size.xl,
+    fontWeight: '800',
+    color: Colors.textPrimary,
   },
-  headerTitle: {
-    fontSize: 28,
+  listContent: { padding: Spacing.base },
+  sectionHeader: {
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
+  sectionHeaderText: {
+    fontSize: Typography.size.sm,
     fontWeight: '700',
-    marginBottom: 4,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  headerSubtitle: {
-    fontSize: 14,
-  },
-  content: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 20,
-    paddingTop: 8,
-  },
-  summaryCard: {
-    marginBottom: 20,
-    borderRadius: 16,
-    padding: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  summaryStats: {
+  card: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    ...Shadow.sm,
   },
-  statItem: {
+  cardLeft: { paddingTop: 2 },
+  statusIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
-  },
-  statIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
   },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
+  cardRight: { flex: 1 },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 2,
   },
-  statLabel: {
-    fontSize: 12,
+  stallCode: {
+    fontSize: Typography.size.base,
+    fontWeight: '800',
+    color: Colors.primary,
   },
-  paymentCard: {
-    marginBottom: 12,
-    borderRadius: 16,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+  statusPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
   },
-  paymentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+  statusPillText: { fontSize: Typography.size.xs, fontWeight: '700' },
+  hallName: {
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.xs,
   },
-  paymentIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  paymentInfo: {
-    flex: 1,
-  },
-  amount: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  paymentLabel: {
-    fontSize: 12,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  paymentDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  detailLabel: {
-    fontSize: 11,
-  },
-  failedNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 8,
-    gap: 8,
-  },
-  failedText: {
-    fontSize: 12,
-    color: '#EF4444',
-    flex: 1,
+  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaText: { fontSize: Typography.size.xs, color: Colors.textMuted },
+  metaDot: { color: Colors.textMuted },
+  price: { color: Colors.primary, fontWeight: '700' },
+  adminNote: {
+    marginTop: Spacing.sm,
+    fontSize: Typography.size.xs,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
   },
   emptyState: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 30,
-  },
-  emptyIconContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
+    padding: Spacing['2xl'],
+    gap: Spacing.md,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: Typography.size.xl,
+    fontWeight: '700',
+    color: Colors.textPrimary,
     textAlign: 'center',
   },
-  emptyText: {
-    fontSize: 14,
+  emptySubtitle: {
+    fontSize: Typography.size.sm,
+    color: Colors.textMuted,
     textAlign: 'center',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    fontSize: 16,
-  },
-  errorState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 30,
-  },
-  errorIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  errorTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  retryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    gap: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 15,
-    fontWeight: '600',
+    lineHeight: 22,
   },
 });

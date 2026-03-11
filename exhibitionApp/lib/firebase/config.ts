@@ -1,5 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+// getReactNativePersistence is in the RN bundle (dist/rn/index.js) but absent from TS types
+// @ts-ignore
+import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,16 +13,22 @@ const firebaseConfig = {
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Use AsyncStorage for auth persistence across app restarts
-export const auth = getApps().length > 1
-  ? (getApps()[0] as any)._delegate._getProvider('auth').getImmediate()
-  : initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
+// initializeAuth must only be called once. On HMR hot-reloads the app is already
+// initialized, so fall back to getAuth() to avoid a duplicate-app error.
+let _auth;
+try {
+  _auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+} catch {
+  _auth = getAuth(app);
+}
+export const auth = _auth;
 
 export const db = getFirestore(app);
 export const storage = getStorage(app);
