@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   getAllBookings,
   getAllPayments,
@@ -10,6 +10,8 @@ import {
   type Payment,
   type PaymentRecord,
 } from '@/lib/firebase/services';
+import { storage } from '@/lib/firebase/config';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -32,7 +34,11 @@ export default function PaymentsPage() {
   const [method, setMethod] = useState('NEFT');
   const [reference, setReference] = useState('');
   const [payNotes, setPayNotes] = useState('');
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // View payment history modal
   const [historyTarget, setHistoryTarget] = useState<PaymentRow | null>(null);
@@ -83,6 +89,31 @@ export default function PaymentsPage() {
     setMethod('NEFT');
     setReference('');
     setPayNotes('');
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
+    setUploadProgress(0);
+  }
+
+  function handleScreenshotChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScreenshotFile(file);
+    setScreenshotPreview(URL.createObjectURL(file));
+  }
+
+  async function uploadScreenshot(bookingId: string): Promise<string | undefined> {
+    if (!screenshotFile) return undefined;
+    const path = `payment-screenshots/${bookingId}/${Date.now()}_${screenshotFile.name}`;
+    const fileRef = storageRef(storage, path);
+    return new Promise((resolve, reject) => {
+      const task = uploadBytesResumable(fileRef, screenshotFile);
+      task.on(
+        'state_changed',
+        (snap) => setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
+        reject,
+        async () => resolve(await getDownloadURL(task.snapshot.ref)),
+      );
+    });
   }
 
   async function submitPayment() {
@@ -92,12 +123,14 @@ export default function PaymentsPage() {
     setSaving(true);
     try {
       const { booking, payment } = recordTarget;
+      const screenshotUrl = await uploadScreenshot(booking.id);
       const record: PaymentRecord = {
         amount: num,
         method,
         date: new Date().toISOString(),
         reference: reference.trim() || undefined,
         notes: payNotes.trim() || undefined,
+        screenshotUrl,
         recordedBy: 'Admin',
       };
 
@@ -275,11 +308,33 @@ export default function PaymentsPage() {
               {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </FormGroup>
-          <FormGroup label="Reference / Cheque No.">
+          <FormGroup label="Reference / Transaction ID">
             <input value={reference} onChange={(e) => setReference(e.target.value)} style={inputStyle} placeholder="Optional" />
           </FormGroup>
           <FormGroup label="Notes">
             <textarea value={payNotes} onChange={(e) => setPayNotes(e.target.value)} style={{ ...inputStyle, height: 70, paddingTop: 10, resize: 'vertical' }} placeholder="Optional notes" />
+          </FormGroup>
+          <FormGroup label="Payment Screenshot">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleScreenshotChange}
+              style={{ display: 'none' }}
+            />
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              style={{ border: '2px dashed #E5E7EB', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', textAlign: 'center', background: '#F9FAFB', fontSize: 13, color: '#6B7280' }}
+            >
+              {screenshotPreview ? (
+                <img src={screenshotPreview} alt="Preview" style={{ maxHeight: 120, maxWidth: '100%', borderRadius: 6, objectFit: 'contain' }} />
+              ) : (
+                <>📎 Click to attach screenshot (optional)</>
+              )}
+            </div>
+            {uploadProgress > 0 && uploadProgress < 100 && (
+              <div style={{ marginTop: 6, fontSize: 12, color: '#0D4F4F' }}>Uploading… {uploadProgress}%</div>
+            )}
           </FormGroup>
 
           <ModalActions onCancel={() => setRecordTarget(null)} onConfirm={submitPayment} loading={saving} label="Record Payment" />
@@ -313,6 +368,11 @@ export default function PaymentsPage() {
               </div>
               {r.reference && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Ref: {r.reference}</div>}
               {r.notes && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{r.notes}</div>}
+              {r.screenshotUrl && (
+                <a href={r.screenshotUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: 6 }}>
+                  <img src={r.screenshotUrl} alt="Screenshot" style={{ maxHeight: 80, maxWidth: '100%', borderRadius: 6, objectFit: 'contain', border: '1px solid #E5E7EB' }} />
+                </a>
+              )}
               <div style={{ fontSize: 11, color: '#D1D5DB', marginTop: 4 }}>Recorded by {r.recordedBy}</div>
             </div>
           ))}

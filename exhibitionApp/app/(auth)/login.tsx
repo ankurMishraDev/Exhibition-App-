@@ -208,8 +208,10 @@ function mapFirebaseError(msg: string): string {
     return 'Invalid email or password. Please try again.';
   if (msg.includes('too-many-requests'))
     return 'Too many failed attempts. Please try again later.';
-  if (msg.includes('email-not-verified'))
-    return 'Please verify your email before signing in.';
+  if (msg.includes('email-not-verified') || msg.includes('verify your email'))
+    return 'Please verify your email before signing in. Check your inbox for the verification link.';
+  // Return the raw message if it looks like a user-facing string (not a Firebase code)
+  if (!msg.includes('auth/') && !msg.includes('Firebase')) return msg;
   return 'Something went wrong. Please try again.';
 }
 

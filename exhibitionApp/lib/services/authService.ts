@@ -23,6 +23,8 @@ export async function registerWithEmail(
   const { user } = await createUserWithEmailAndPassword(auth, email, password);
   await sendEmailVerification(user);
   await _createUserDoc(user.uid, email, displayName, role);
+  // Sign out immediately — user must verify email before they can log in
+  await signOut(auth);
   return user;
 }
 
@@ -31,6 +33,10 @@ export async function loginWithEmail(
   password: string
 ): Promise<User> {
   const { user } = await signInWithEmailAndPassword(auth, email, password);
+  if (!user.emailVerified) {
+    await signOut(auth);
+    throw new Error('Please verify your email before signing in. Check your inbox for the verification link.');
+  }
   return user;
 }
 

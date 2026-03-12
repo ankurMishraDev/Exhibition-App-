@@ -17,9 +17,15 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const SPACE_TYPES = ['Raw Space', 'Shell Scheme', 'Corner Stall', 'Island Stall', 'Premium Space'];
-const FEATURES = ['Power', 'WiFi', 'Table', 'Chairs', 'Carpet', 'Fascia Board', 'Storage', 'Lighting'];
-const DEFAULT_PRICE = 15000;
+const SPACE_TYPES = ['Bare Space', 'Shell Scheme', '2-Side Open', '3-Side Open'];
+const FEATURES = ['Power', 'WiFi', 'Table', 'Chair', 'Carpet', 'Fascia Board', 'Storage', 'Lighting'];
+
+function calcPricing(length: number, breadth: number) {
+  const area = length * breadth;
+  const basePrice = area * 7500;
+  const gstAmount = Math.round(basePrice * 0.18);
+  return { area, basePrice, gstAmount, totalPrice: basePrice + gstAmount };
+}
 
 export default function HallsPage() {
   const [halls, setHalls] = useState<Hall[]>([]);
@@ -32,6 +38,8 @@ export default function HallsPage() {
   const [showHallForm, setShowHallForm] = useState(false);
   const [editingHall, setEditingHall] = useState<Hall | null>(null);
   const [hallName, setHallName] = useState('');
+  const [hallCode, setHallCode] = useState('');
+  const [hallDimensions, setHallDimensions] = useState('');
   const [hallSaving, setHallSaving] = useState(false);
 
   // Stall form
@@ -40,7 +48,6 @@ export default function HallsPage() {
   const [stallCode, setStallCode] = useState('');
   const [stallLength, setStallLength] = useState('3');
   const [stallBreadth, setStallBreadth] = useState('3');
-  const [stallPrice, setStallPrice] = useState(String(DEFAULT_PRICE));
   const [stallSpaceType, setStallSpaceType] = useState('Shell Scheme');
   const [stallFeatures, setStallFeatures] = useState<string[]>([]);
   const [stallRow, setStallRow] = useState('');
@@ -54,7 +61,6 @@ export default function HallsPage() {
   const [bulkEnd, setBulkEnd] = useState('10');
   const [bulkLength, setBulkLength] = useState('3');
   const [bulkBreadth, setBulkBreadth] = useState('3');
-  const [bulkPrice, setBulkPrice] = useState(String(DEFAULT_PRICE));
   const [bulkSpaceType, setBulkSpaceType] = useState('Shell Scheme');
   const [bulkSaving, setBulkSaving] = useState(false);
 
@@ -80,12 +86,16 @@ export default function HallsPage() {
   function openHallCreate() {
     setEditingHall(null);
     setHallName('');
+    setHallCode('');
+    setHallDimensions('');
     setShowHallForm(true);
   }
 
   function openHallEdit(hall: Hall) {
     setEditingHall(hall);
     setHallName(hall.hallName);
+    setHallCode(hall.hallCode ?? '');
+    setHallDimensions(hall.dimensions ?? '');
     setShowHallForm(true);
   }
 
@@ -93,14 +103,16 @@ export default function HallsPage() {
     if (!hallName.trim()) { toast.error('Hall name required'); return; }
     setHallSaving(true);
     try {
+      const code = hallCode.trim().toUpperCase();
+      const dims = hallDimensions.trim();
       if (editingHall) {
-        await updateHall(editingHall.id, { hallName: hallName.trim() });
-        setHalls((prev) => prev.map((h) => h.id === editingHall.id ? { ...h, hallName: hallName.trim() } : h));
+        await updateHall(editingHall.id, { hallName: hallName.trim(), hallCode: code, dimensions: dims });
+        setHalls((prev) => prev.map((h) => h.id === editingHall.id ? { ...h, hallName: hallName.trim(), hallCode: code, dimensions: dims } : h));
         toast.success('Hall updated');
       } else {
-        const id = await createHall({ hallName: hallName.trim(), stallCount: 0, availableCount: 0 });
+        const id = await createHall({ hallCode: code, hallName: hallName.trim(), dimensions: dims, stallCount: 0, availableCount: 0 });
         const newHall: Hall = {
-          id, hallName: hallName.trim(), stallCount: 0, availableCount: 0,
+          id, hallCode: code, hallName: hallName.trim(), dimensions: dims, stallCount: 0, availableCount: 0,
           createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
         };
         setHalls((prev) => [...prev, newHall]);
@@ -128,7 +140,7 @@ export default function HallsPage() {
     if (!selectedHall) { toast.error('Select a hall first'); return; }
     setEditingStall(null);
     setStallCode('');
-    setStallLength('3'); setStallBreadth('3'); setStallPrice(String(DEFAULT_PRICE));
+    setStallLength('3'); setStallBreadth('3');
     setStallSpaceType('Shell Scheme'); setStallFeatures([]); setStallRow(''); setStallCol('');
     setShowStallForm(true);
   }
@@ -137,7 +149,7 @@ export default function HallsPage() {
     setEditingStall(stall);
     setStallCode(stall.stallCode);
     setStallLength(String(stall.length)); setStallBreadth(String(stall.breadth));
-    setStallPrice(String(stall.price)); setStallSpaceType(stall.spaceType);
+    setStallSpaceType(stall.spaceType);
     setStallFeatures(stall.features); setStallRow(String(stall.row ?? ''));
     setStallCol(String(stall.col ?? ''));
     setShowStallForm(true);
@@ -147,13 +159,17 @@ export default function HallsPage() {
     if (!stallCode.trim() || !selectedHall) { toast.error('Stall code required'); return; }
     setStallSaving(true);
     try {
+      const l = parseFloat(stallLength) || 3;
+      const b = parseFloat(stallBreadth) || 3;
+      const pricing = calcPricing(l, b);
       const data: Omit<Stall, 'id' | 'createdAt' | 'updatedAt'> = {
         stallCode: stallCode.trim().toUpperCase(),
         hallId: selectedHall.id,
-        length: parseFloat(stallLength) || 3,
-        breadth: parseFloat(stallBreadth) || 3,
-        price: parseFloat(stallPrice) || DEFAULT_PRICE,
-        status: 'available',
+        hallName: selectedHall.hallName,
+        length: l, breadth: b, ...pricing,
+        status: editingStall?.status ?? 'available',
+        exhibitorId: editingStall?.exhibitorId ?? null,
+        bookingId: editingStall?.bookingId ?? null,
         spaceType: stallSpaceType,
         features: stallFeatures,
         row: stallRow ? parseInt(stallRow) : undefined,
@@ -192,11 +208,15 @@ export default function HallsPage() {
     try {
       for (let i = start; i <= end; i++) {
         const code = `${bulkPrefix.trim().toUpperCase()}-${i}`;
+        const l = parseFloat(bulkLength) || 3;
+        const b = parseFloat(bulkBreadth) || 3;
+        const pricing = calcPricing(l, b);
         const data: Omit<Stall, 'id' | 'createdAt' | 'updatedAt'> = {
           stallCode: code, hallId: selectedHall.id,
-          length: parseFloat(bulkLength) || 3, breadth: parseFloat(bulkBreadth) || 3,
-          price: parseFloat(bulkPrice) || DEFAULT_PRICE,
-          status: 'available', spaceType: bulkSpaceType, features: [],
+          hallName: selectedHall.hallName,
+          length: l, breadth: b, ...pricing,
+          status: 'available', exhibitorId: null, bookingId: null,
+          spaceType: bulkSpaceType, features: [],
         };
         await createStall(data);
       }
@@ -291,8 +311,8 @@ export default function HallsPage() {
                         }}
                       >
                         <div style={{ fontWeight: 800, fontSize: 13, color: '#1A1A2E', marginBottom: 4 }}>{stall.stallCode}</div>
-                        <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 2 }}>{stall.length}m × {stall.breadth}m</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#7C3AED', marginBottom: 8 }}>{formatCurrency(stall.price)}</div>
+                        <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 2 }}>{stall.length}m × {stall.breadth}m ({stall.area} sqm)</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#7C3AED', marginBottom: 8 }}>{formatCurrency(stall.totalPrice)}</div>
                         <span style={{
                           fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
                           background: STATUS_COLOR[stall.status].pillBg, color: STATUS_COLOR[stall.status].pillColor,
@@ -317,8 +337,16 @@ export default function HallsPage() {
       {/* Hall Modal */}
       {showHallForm && (
         <Modal title={editingHall ? 'Edit Hall' : 'Create Hall'} onClose={() => setShowHallForm(false)}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <FormGroup label="Hall Code" required>
+              <input value={hallCode} onChange={(e) => setHallCode(e.target.value)} placeholder="e.g. A" style={inputStyle} autoFocus />
+            </FormGroup>
+            <FormGroup label="Dimensions">
+              <input value={hallDimensions} onChange={(e) => setHallDimensions(e.target.value)} placeholder="e.g. 30×60 M" style={inputStyle} />
+            </FormGroup>
+          </div>
           <FormGroup label="Hall Name" required>
-            <input value={hallName} onChange={(e) => setHallName(e.target.value)} placeholder="e.g. Hall A" style={inputStyle} autoFocus />
+            <input value={hallName} onChange={(e) => setHallName(e.target.value)} placeholder="e.g. Hall A" style={inputStyle} />
           </FormGroup>
           <ModalActions onCancel={() => setShowHallForm(false)} onConfirm={saveHall} loading={hallSaving} label={editingHall ? 'Update' : 'Create Hall'} />
         </Modal>
@@ -328,13 +356,17 @@ export default function HallsPage() {
       {showStallForm && (
         <Modal title={editingStall ? 'Edit Stall' : 'Add Stall'} onClose={() => setShowStallForm(false)}>
           <FormGroup label="Stall Code" required>
-            <input value={stallCode} onChange={(e) => setStallCode(e.target.value)} placeholder="e.g. A-01" style={inputStyle} />
+            <input value={stallCode} onChange={(e) => setStallCode(e.target.value)} placeholder="e.g. HA-01" style={inputStyle} />
           </FormGroup>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <FormGroup label="Length (m)"><input value={stallLength} onChange={(e) => setStallLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
             <FormGroup label="Breadth (m)"><input value={stallBreadth} onChange={(e) => setStallBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
-            <FormGroup label="Price (₹)"><input value={stallPrice} onChange={(e) => setStallPrice(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           </div>
+          {stallLength && stallBreadth && (
+            <div style={{ padding: '8px 12px', background: '#F0FDF4', borderRadius: 8, marginBottom: '1rem', fontSize: 13, color: '#16A34A', fontWeight: 600 }}>
+              Area: {(parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)} sqm · Base: {formatCurrency((parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)*7500)} + 18% GST = {formatCurrency(Math.round((parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)*7500*1.18))}
+            </div>
+          )}
           <FormGroup label="Space Type">
             <select value={stallSpaceType} onChange={(e) => setStallSpaceType(e.target.value)} style={inputStyle}>
               {SPACE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -369,7 +401,6 @@ export default function HallsPage() {
             <FormGroup label="Length (m)"><input value={bulkLength} onChange={(e) => setBulkLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
             <FormGroup label="Breadth (m)"><input value={bulkBreadth} onChange={(e) => setBulkBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           </div>
-          <FormGroup label="Price (₹)"><input value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           <FormGroup label="Space Type">
             <select value={bulkSpaceType} onChange={(e) => setBulkSpaceType(e.target.value)} style={inputStyle}>
               {SPACE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}

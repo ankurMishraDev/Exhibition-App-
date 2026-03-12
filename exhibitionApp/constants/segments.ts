@@ -24,10 +24,10 @@ export const CONTACT_PREFIXES = ['Mr.', 'Mrs.', 'Ms.', 'Dr.'] as const;
 export type ContactPrefix = (typeof CONTACT_PREFIXES)[number];
 
 export const SPACE_TYPES = [
-  'Bare space',
-  'Shell space',
-  '2-side space',
-  '3-side space',
+  'Bare Space',
+  'Shell Scheme',
+  '2-Side Open',
+  '3-Side Open',
 ] as const;
 export type SpaceType = (typeof SPACE_TYPES)[number];
 
@@ -45,6 +45,6 @@ export const COUNTRIES = [
   'Other',
 ];
 
-export const EVENT_NAME = 'PlastPack';
-export const EVENT_LOCATION = 'Exhibition Ground, Mumbai';
-export const EVENT_DATE = '13–16 February 2026';
+export const EVENT_NAME = 'PlastPack 2026';
+export const EVENT_LOCATION = 'Labhganga Exhibition Centre, Indore M.P.';
+export const EVENT_DATE = '27–30 November 2026';

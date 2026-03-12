@@ -1,9 +1,9 @@
 export const Colors = {
-  // Brand — derived from Stitch project customColor
-  primary: '#0D4F4F',
-  primaryLight: '#1A7F7F',
-  primaryDark: '#083535',
-  primarySurface: '#E6F4F4',
+  // Brand — #c54e9b (pink/magenta)
+  primary: '#c54e9b',
+  primaryLight: '#d966ac',
+  primaryDark: '#9c3a78',
+  primarySurface: '#fce8f6',
 
   // Indian tricolor accent
   saffron: '#FF9933',

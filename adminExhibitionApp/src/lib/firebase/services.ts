@@ -2,16 +2,12 @@ import {
   collection,
   doc,
   getDocs,
-  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
-  Timestamp,
-  serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
@@ -23,7 +19,9 @@ export type StallStatus = 'available' | 'reserved' | 'booked';
 
 export interface Hall {
   id: string;
+  hallCode: string;
   hallName: string;
+  dimensions?: string;
   hallMapUrl?: string;
   eventMapUrl?: string;
   stallCount: number;
@@ -36,12 +34,16 @@ export interface Stall {
   id: string;
   stallCode: string;
   hallId: string;
+  hallName: string;
   length: number;
   breadth: number;
-  price: number;
+  area: number;
+  basePrice: number;
+  gstAmount: number;
+  totalPrice: number;
   status: StallStatus;
-  exhibitorId?: string;
-  bookingId?: string;
+  exhibitorId?: string | null;
+  bookingId?: string | null;
   spaceType: string;
   features: string[];
   row?: number;
@@ -90,6 +92,12 @@ export interface Exhibitor {
   ippfMember: boolean;
   membershipNumber?: string;
   logoUrl?: string;
+  productDetails?: {
+    segments: string[];
+    categories: string[];
+    machineryDescription: string;
+    rawMaterialDescription: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -115,6 +123,7 @@ export interface PaymentRecord {
   method: string;
   reference?: string;
   notes?: string;
+  screenshotUrl?: string;
   recordedBy: string;
 }
 
@@ -147,11 +156,11 @@ export async function deleteHall(id: string): Promise<void> {
 export async function getStallsByHall(hallId: string): Promise<Stall[]> {
   const q = query(
     collection(db, 'stalls'),
-    where('hallId', '==', hallId),
-    orderBy('stallCode')
+    where('hallId', '==', hallId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Stall));
+  const stalls = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Stall));
+  return stalls.sort((a, b) => a.stallCode.localeCompare(b.stallCode));
 }
 
 export async function createStall(data: Omit<Stall, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
@@ -174,15 +183,15 @@ export async function deleteStall(id: string): Promise<void> {
 // ─── Bookings ─────────────────────────────────────────────────────────────────
 
 export async function getAllBookings(): Promise<Booking[]> {
-  const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+  const snap = await getDocs(collection(db, 'bookings'));
+  const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+  return bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function subscribeToAllBookings(callback: (bookings: Booking[]) => void): Unsubscribe {
-  const q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking)));
+  return onSnapshot(collection(db, 'bookings'), (snap) => {
+    const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
+    callback(bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   });
 }
 
@@ -229,9 +238,9 @@ export async function rejectBooking(
 // ─── Exhibitors ───────────────────────────────────────────────────────────────
 
 export async function getAllExhibitors(): Promise<Exhibitor[]> {
-  const q = query(collection(db, 'exhibitors'), orderBy('companyName'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Exhibitor));
+  const snap = await getDocs(collection(db, 'exhibitors'));
+  const exhibitors = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Exhibitor));
+  return exhibitors.sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
 }
 
 // ─── Payments ─────────────────────────────────────────────────────────────────

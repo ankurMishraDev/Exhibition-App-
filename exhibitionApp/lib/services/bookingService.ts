@@ -5,7 +5,6 @@ import {
   getDocs,
   query,
   where,
-  orderBy,
   onSnapshot,
   serverTimestamp,
   Unsubscribe,
@@ -48,7 +47,7 @@ export async function createBooking(params: {
       companyName: exhibitor.companyName,
       bookingDate: now,
       status: 'pending_approval',
-      totalAmount: stall.price,
+      totalAmount: stall.totalPrice,
       exhibitorSnapshot: {
         contactPerson: exhibitor.contactPerson,
         mobile: exhibitor.mobile,
@@ -90,11 +89,11 @@ export async function getBookingById(id: string): Promise<BookingModel | null> {
 export async function getExhibitorBookings(exhibitorId: string): Promise<BookingModel[]> {
   const q = query(
     collection(db, 'bookings'),
-    where('exhibitorId', '==', exhibitorId),
-    orderBy('createdAt', 'desc')
+    where('exhibitorId', '==', exhibitorId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
+  const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
+  return bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export function subscribeToExhibitorBookings(
@@ -103,11 +102,11 @@ export function subscribeToExhibitorBookings(
 ): Unsubscribe {
   const q = query(
     collection(db, 'bookings'),
-    where('exhibitorId', '==', exhibitorId),
-    orderBy('createdAt', 'desc')
+    where('exhibitorId', '==', exhibitorId)
   );
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel)));
+    const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
+    callback(bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   });
 }
 

@@ -179,16 +179,32 @@ export default function BookingCheckoutScreen() {
             </View>
 
             <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>Stall Booking Fee</Text>
+              <Text style={styles.priceLabel}>Area</Text>
               <Text style={styles.priceValue}>
-                ₹{stall?.price.toLocaleString('en-IN') || '—'}
+                {stall ? `${stall.area} sqm (${stall.length}m × ${stall.breadth}m)` : '—'}
+              </Text>
+            </View>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Rate</Text>
+              <Text style={styles.priceValue}>₹7,500 / sqm</Text>
+            </View>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Base Amount</Text>
+              <Text style={styles.priceValue}>
+                ₹{stall?.basePrice.toLocaleString('en-IN') || '—'}
+              </Text>
+            </View>
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>GST (18%)</Text>
+              <Text style={styles.priceValue}>
+                ₹{stall?.gstAmount.toLocaleString('en-IN') || '—'}
               </Text>
             </View>
             <View style={styles.priceDivider} />
             <View style={styles.priceRow}>
               <Text style={styles.totalLabel}>Total Amount</Text>
               <Text style={styles.totalValue}>
-                ₹{stall?.price.toLocaleString('en-IN') || '—'}
+                ₹{stall?.totalPrice.toLocaleString('en-IN') || '—'}
               </Text>
             </View>
 

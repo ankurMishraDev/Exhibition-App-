@@ -14,13 +14,19 @@ function AuthGate() {
     if (loading) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const isVerified = user?.emailVerified ?? false;
 
     if (!user && !inAuthGroup) {
+      // Not logged in — send to login
       router.replace('/(auth)/login');
-    } else if (user && inAuthGroup) {
+    } else if (user && !isVerified && !inAuthGroup) {
+      // Logged in but email not verified — send back to login
+      router.replace('/(auth)/login');
+    } else if (user && isVerified && inAuthGroup) {
+      // Verified user on auth page — send to app
       router.replace('/(tabs)');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
 
   if (loading) {
     return (

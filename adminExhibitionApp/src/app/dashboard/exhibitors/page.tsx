@@ -1,34 +1,31 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { getAllExhibitors, type Exhibitor } from '@/lib/firebase/services';
 
 export default function ExhibitorsPage() {
   const [exhibitors, setExhibitors] = useState<Exhibitor[]>([]);
-  const [filtered, setFiltered] = useState<Exhibitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Exhibitor | null>(null);
 
-  useEffect(() => {
-    getAllExhibitors()
-      .then((data) => { setExhibitors(data); setFiltered(data); })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (!search.trim()) { setFiltered(exhibitors); return; }
+  const filtered = useMemo(() => {
+    if (!search.trim()) return exhibitors;
     const q = search.toLowerCase();
-    setFiltered(
-      exhibitors.filter(
-        (e) =>
-          e.companyName?.toLowerCase().includes(q) ||
-          e.contactPerson?.toLowerCase().includes(q) ||
-          e.city?.toLowerCase().includes(q) ||
-          e.email?.toLowerCase().includes(q),
-      ),
+    return exhibitors.filter(
+      (e) =>
+        e.companyName?.toLowerCase().includes(q) ||
+        e.contactPerson?.toLowerCase().includes(q) ||
+        e.city?.toLowerCase().includes(q) ||
+        e.email?.toLowerCase().includes(q),
     );
   }, [search, exhibitors]);
+
+  useEffect(() => {
+    getAllExhibitors()
+      .then((data) => { setExhibitors(data); })
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div style={{ padding: '2rem' }}>
@@ -118,7 +115,7 @@ export default function ExhibitorsPage() {
         >
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             {/* Modal header */}
-            <div style={{ padding: '1.25rem 1.75rem', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg, #0D4F4F 0%, #1A7F7F 100%)', borderRadius: '16px 16px 0 0' }}>
+            <div style={{ padding: '1.25rem 1.75rem', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'linear-gradient(135deg, #c54e9b 0%, #d966ac 100%)', borderRadius: '16px 16px 0 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <Avatar name={selected.companyName} logoUrl={selected.logoUrl} size={48} white />
                 <div>
@@ -167,13 +164,13 @@ export default function ExhibitorsPage() {
                       <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 8 }}>Segments</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {selected.productDetails.segments.map((s: string) => (
-                          <span key={s} style={{ fontSize: 12, fontWeight: 600, background: '#E6F4F4', color: '#0D4F4F', padding: '3px 10px', borderRadius: 100 }}>{s}</span>
+                          <span key={s} style={{ fontSize: 12, fontWeight: 600, background: '#fce8f6', color: '#c54e9b', padding: '3px 10px', borderRadius: 100 }}>{s}</span>
                         ))}
                       </div>
                     </div>
                   )}
                   <Grid2>
-                    <Field label="Categories" value={selected.productDetails.categories} />
+                    <Field label="Categories" value={selected.productDetails.categories?.join(', ')} />
                     <Field label="Machinery" value={selected.productDetails.machineryDescription} />
                     <Field label="Raw Materials" value={selected.productDetails.rawMaterialDescription} />
                   </Grid2>
@@ -195,8 +192,8 @@ function Avatar({ name, logoUrl, size = 36, white }: { name?: string; logoUrl?: 
     // eslint-disable-next-line @next/next/no-img-element
     <img src={logoUrl} alt={name} style={{ width: size, height: size, borderRadius: size / 2, objectFit: 'cover', flexShrink: 0 }} />
   ) : (
-    <div style={{ width: size, height: size, borderRadius: size / 2, background: white ? 'rgba(255,255,255,0.25)' : '#0D4F4F25', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-      <span style={{ fontSize: size * 0.42, fontWeight: 800, color: white ? '#fff' : '#0D4F4F' }}>{initial}</span>
+    <div style={{ width: size, height: size, borderRadius: size / 2, background: white ? 'rgba(255,255,255,0.25)' : '#fce8f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <span style={{ fontSize: size * 0.42, fontWeight: 800, color: white ? '#fff' : '#c54e9b' }}>{initial}</span>
     </div>
   );
 }

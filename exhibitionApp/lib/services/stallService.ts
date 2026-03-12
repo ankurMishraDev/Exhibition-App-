@@ -5,7 +5,6 @@ import {
   doc,
   query,
   where,
-  orderBy,
   onSnapshot,
   Unsubscribe,
   updateDoc,
@@ -17,11 +16,11 @@ import { StallModel, StallStatus } from '@/lib/models/stall.model';
 export async function getStallsByHall(hallId: string): Promise<StallModel[]> {
   const q = query(
     collection(db, 'stalls'),
-    where('hallId', '==', hallId),
-    orderBy('stallCode', 'asc')
+    where('hallId', '==', hallId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as StallModel));
+  const stalls = snap.docs.map((d) => ({ id: d.id, ...d.data() } as StallModel));
+  return stalls.sort((a, b) => a.stallCode.localeCompare(b.stallCode));
 }
 
 export async function getStallById(id: string): Promise<StallModel | null> {
@@ -36,11 +35,11 @@ export function subscribeToHallStalls(
 ): Unsubscribe {
   const q = query(
     collection(db, 'stalls'),
-    where('hallId', '==', hallId),
-    orderBy('stallCode', 'asc')
+    where('hallId', '==', hallId)
   );
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as StallModel)));
+    const stalls = snap.docs.map((d) => ({ id: d.id, ...d.data() } as StallModel));
+    callback(stalls.sort((a, b) => a.stallCode.localeCompare(b.stallCode)));
   });
 }
 

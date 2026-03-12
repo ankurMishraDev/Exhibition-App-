@@ -2,8 +2,10 @@ export interface PaymentRecord {
   recordId: string;
   amount: number;
   date: string;
-  transactionId: string;
+  method: string;
+  transactionId?: string;
   notes?: string;
+  screenshotUrl?: string;
   addedBy: string;
   addedAt: string;
 }

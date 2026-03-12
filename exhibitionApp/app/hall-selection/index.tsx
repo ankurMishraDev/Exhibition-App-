@@ -259,9 +259,11 @@ export default function HallSelectionScreen() {
             </View>
 
             <View style={styles.sheetDetails}>
-              <DetailRow icon="resize-outline" label="Size" value={`${selectedStall.length}m × ${selectedStall.breadth}m`} />
+              <DetailRow icon="resize-outline" label="Size" value={`${selectedStall.length}m × ${selectedStall.breadth}m (${selectedStall.area} sqm)`} />
               <DetailRow icon="layers-outline" label="Space Type" value={selectedStall.spaceType} />
-              <DetailRow icon="pricetag-outline" label="Price" value={`₹${selectedStall.price.toLocaleString('en-IN')}`} highlight />
+              <DetailRow icon="cash-outline" label="Base Price" value={`₹${selectedStall.basePrice.toLocaleString('en-IN')}`} />
+              <DetailRow icon="receipt-outline" label="GST (18%)" value={`₹${selectedStall.gstAmount.toLocaleString('en-IN')}`} />
+              <DetailRow icon="pricetag-outline" label="Total Price" value={`₹${selectedStall.totalPrice.toLocaleString('en-IN')}`} highlight />
               {selectedStall.features.length > 0 && (
                 <View style={styles.featuresRow}>
                   {selectedStall.features.map((f) => (
