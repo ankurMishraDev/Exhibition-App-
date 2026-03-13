@@ -8,6 +8,7 @@ import {
   query,
   where,
   onSnapshot,
+  Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
@@ -48,8 +49,8 @@ export interface Stall {
   features: string[];
   row?: number;
   col?: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Booking {
@@ -69,8 +70,8 @@ export interface Booking {
   totalAmount: number;
   exhibitorSnapshot?: Record<string, unknown>;
   productDetails?: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Exhibitor {
@@ -185,13 +186,13 @@ export async function deleteStall(id: string): Promise<void> {
 export async function getAllBookings(): Promise<Booking[]> {
   const snap = await getDocs(collection(db, 'bookings'));
   const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
-  return bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return bookings.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
 }
 
 export function subscribeToAllBookings(callback: (bookings: Booking[]) => void): Unsubscribe {
   return onSnapshot(collection(db, 'bookings'), (snap) => {
     const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Booking));
-    callback(bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    callback(bookings.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()));
   });
 }
 
@@ -242,7 +243,7 @@ export async function getAllExhibitors(): Promise<Exhibitor[]> {
   const exhibitors = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Exhibitor));
   return exhibitors.sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
 }
-
+ 
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
 export async function getAllPayments(): Promise<Payment[]> {

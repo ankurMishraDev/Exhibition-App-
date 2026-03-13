@@ -1,9 +1,9 @@
 export const Colors = {
-  // Brand — #c54e9b (pink/magenta)
-  primary: '#c54e9b',
-  primaryLight: '#d966ac',
-  primaryDark: '#9c3a78',
-  primarySurface: '#fce8f6',
+  // Brand — #9F1A71
+  primary: '#9F1A71',
+  primaryLight: '#B9328B',
+  primaryDark: '#80135A',
+  primarySurface: '#FBE8F4',
 
   // Indian tricolor accent
   saffron: '#FF9933',

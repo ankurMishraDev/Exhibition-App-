@@ -47,11 +47,11 @@ export default function HomeScreen() {
           style={styles.banner}
         >
           {/* Indian tricolor stripe at top */}
-          <View style={styles.tricolorBar}>
+          {/* <View style={styles.tricolorBar}>
             <View style={[styles.tricolorSegment, { backgroundColor: Colors.saffron }]} />
             <View style={[styles.tricolorSegment, { backgroundColor: Colors.white }]} />
             <View style={[styles.tricolorSegment, { backgroundColor: Colors.green }]} />
-          </View>
+          </View> */}
 
           <View style={styles.bannerContent}>
             <View style={styles.bannerTop}>

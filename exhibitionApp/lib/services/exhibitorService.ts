@@ -1,9 +1,13 @@
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
   serverTimestamp,
+  query,
+  orderBy,
 } from 'firebase/firestore';
 import {
   ref,
@@ -35,6 +39,18 @@ export async function getExhibitorById(id: string): Promise<ExhibitorModel | nul
   const productDetails = await getProductDetails(id);
   if (productDetails) exhibitor.productDetails = productDetails;
   return exhibitor;
+}
+
+export async function getAllExhibitors(): Promise<ExhibitorModel[]> {
+  const q = query(
+    collection(db, 'exhibitors'),
+    orderBy('companyName', 'asc')
+  );
+  const snap = await getDocs(q);
+  
+  // Note: For performance, we're not loading productDetails for every exhibitor here.
+  // We'll load them separately when viewing a profile if needed.
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ExhibitorModel));
 }
 
 // Single-argument form — data must include userId. Uses userId as the doc ID
