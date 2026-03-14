@@ -105,6 +105,36 @@ export async function saveProductDetails(
 
 // ─── Logo Upload ──────────────────────────────────────────────────────────────
 
+export function uploadProfileImage(
+  exhibitorId: string,
+  uri: string,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const storageRef = ref(storage, `profiles/${exhibitorId}/profile.jpg`);
+      const task: UploadTask = uploadBytesResumable(storageRef, blob);
+
+      task.on(
+        'state_changed',
+        (snapshot) => {
+          const pct = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          if (onProgress) onProgress(pct);
+        },
+        (error) => reject(error),
+        async () => {
+          const downloadUrl = await getDownloadURL(task.snapshot.ref);
+          resolve(downloadUrl);
+        }
+      );
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 export function uploadLogo(
   exhibitorId: string,
   uri: string,

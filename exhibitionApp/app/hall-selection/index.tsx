@@ -35,6 +35,7 @@ export default function HallSelectionScreen() {
   const [loadingStalls, setLoadingStalls] = useState(false);
   const [showEventMap, setShowEventMap] = useState(false);
   const [showHallMap, setShowHallMap] = useState(false);
+  const [showHallDropdown, setShowHallDropdown] = useState(false);
   const slideAnim = useRef(new Animated.Value(height)).current;
 
   // Load halls initially
@@ -123,7 +124,7 @@ export default function HallSelectionScreen() {
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <View style={{ flex: 1 }}>
         {/* Map Buttons */}
         <View style={styles.mapRow}>
           <TouchableOpacity
@@ -144,33 +145,18 @@ export default function HallSelectionScreen() {
           )}
         </View>
 
-        {/* Hall Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hallTabsContainer}
-          style={styles.hallTabs}
-        >
-          {halls.map((hall) => (
-            <TouchableOpacity
-              key={hall.id}
-              style={[
-                styles.hallTab,
-                selectedHall?.id === hall.id && styles.hallTabActive,
-              ]}
-              onPress={() => setSelectedHall(hall)}
-            >
-              <Text
-                style={[
-                  styles.hallTabText,
-                  selectedHall?.id === hall.id && styles.hallTabTextActive,
-                ]}
-              >
-                {hall.hallName}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {/* Hall Dropdown */}
+        <View style={{ paddingHorizontal: Spacing.lg, marginBottom: Spacing.md }}>
+          <TouchableOpacity
+            style={styles.dropdownBtn}
+            onPress={() => setShowHallDropdown(true)}
+          >
+            <Text style={styles.dropdownBtnText}>
+              {selectedHall ? selectedHall.hallName : 'Select a Hall'}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={Colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
 
         {/* Hall Stats */}
         {selectedHall && (
@@ -201,7 +187,7 @@ export default function HallSelectionScreen() {
         </View>
 
         {/* Stall Grid */}
-        <View style={styles.gridContainer}>
+        <View style={[styles.gridContainer, { flex: 1 }]}>
           {loadingStalls ? (
             <ActivityIndicator
               size="large"
@@ -218,8 +204,10 @@ export default function HallSelectionScreen() {
               data={stalls}
               keyExtractor={(item) => item.id}
               numColumns={4}
-              scrollEnabled={false}
+              scrollEnabled={true}
+              showsVerticalScrollIndicator={true}
               columnWrapperStyle={styles.gridRow}
+              contentContainerStyle={{ paddingBottom: 120 }}
               renderItem={({ item }) => (
                 <StallCell
                   stall={item}
@@ -230,9 +218,7 @@ export default function HallSelectionScreen() {
             />
           )}
         </View>
-
-        <View style={{ height: 120 }} />
-      </ScrollView>
+      </View>
 
       {/* Bottom Sheet — Stall Detail */}
       {selectedStall && (
@@ -293,6 +279,49 @@ export default function HallSelectionScreen() {
           </Animated.View>
         </>
       )}
+
+      {/* Hall Dropdown Modal */}
+      <Modal
+        visible={showHallDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowHallDropdown(false)}
+      >
+        <TouchableOpacity 
+          style={styles.dropdownModalOverlay} 
+          activeOpacity={1} 
+          onPress={() => setShowHallDropdown(false)}
+        >
+          <View style={styles.dropdownModalContent}>
+            <Text style={styles.dropdownModalTitle}>Select a Hall</Text>
+            <ScrollView>
+              {halls.map((hall) => (
+                <TouchableOpacity
+                  key={hall.id}
+                  style={[
+                    styles.dropdownItem,
+                    selectedHall?.id === hall.id && styles.dropdownItemActive
+                  ]}
+                  onPress={() => {
+                    setSelectedHall(hall);
+                    setShowHallDropdown(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.dropdownItemText,
+                    selectedHall?.id === hall.id && styles.dropdownItemTextActive
+                  ]}>
+                    {hall.hallName}
+                  </Text>
+                  {selectedHall?.id === hall.id && (
+                    <Ionicons name="checkmark" size={20} color={Colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Full-screen Map Modals */}
       <MapModal
@@ -505,6 +534,61 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     gap: Spacing.sm,
     alignItems: 'center',
+  },
+  dropdownBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dropdownBtnText: {
+    fontSize: Typography.size.md,
+    color: Colors.textPrimary,
+    fontWeight: '500',
+  },
+  dropdownModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    padding: Spacing.xl,
+  },
+  dropdownModalContent: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    maxHeight: height * 0.6,
+    overflow: 'hidden',
+  },
+  dropdownModalTitle: {
+    fontSize: Typography.size.lg,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    textAlign: 'center',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  dropdownItemActive: {
+    backgroundColor: Colors.primarySurface,
+  },
+  dropdownItemText: {
+    fontSize: Typography.size.md,
+    color: Colors.textPrimary,
+  },
+  dropdownItemTextActive: {
+    color: Colors.primary,
+    fontWeight: '600',
   },
   hallTab: {
     paddingHorizontal: Spacing.base,

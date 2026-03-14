@@ -1,13 +1,15 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface PaymentRecord {
   recordId: string;
   amount: number;
-  date: string;
+  date: Timestamp;
   method: string;
   transactionId?: string;
   notes?: string;
   screenshotUrl?: string;
   addedBy: string;
-  addedAt: string;
+  addedAt: Timestamp;
 }
 
 export interface PaymentModel {
@@ -21,6 +23,6 @@ export interface PaymentModel {
   paidAmount: number;
   remainingAmount: number;
   paymentRecords: PaymentRecord[];
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

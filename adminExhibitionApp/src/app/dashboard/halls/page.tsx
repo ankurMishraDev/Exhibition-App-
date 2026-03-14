@@ -1,6 +1,9 @@
 ﻿'use client';
 
 import React, { useEffect, useState } from 'react';
+import { Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '@/lib/firebase/config';
 import {
   getHalls,
   getStallsByHall,
@@ -40,6 +43,8 @@ export default function HallsPage() {
   const [hallName, setHallName] = useState('');
   const [hallCode, setHallCode] = useState('');
   const [hallDimensions, setHallDimensions] = useState('');
+  const [hallMapFile, setHallMapFile] = useState<File | null>(null);
+  const [eventMapFile, setEventMapFile] = useState<File | null>(null);
   const [hallSaving, setHallSaving] = useState(false);
 
   // Stall form
@@ -88,6 +93,8 @@ export default function HallsPage() {
     setHallName('');
     setHallCode('');
     setHallDimensions('');
+    setHallMapFile(null);
+    setEventMapFile(null);
     setShowHallForm(true);
   }
 
@@ -96,6 +103,8 @@ export default function HallsPage() {
     setHallName(hall.hallName);
     setHallCode(hall.hallCode ?? '');
     setHallDimensions(hall.dimensions ?? '');
+    setHallMapFile(null);
+    setEventMapFile(null);
     setShowHallForm(true);
   }
 
@@ -105,15 +114,29 @@ export default function HallsPage() {
     try {
       const code = hallCode.trim().toUpperCase();
       const dims = hallDimensions.trim();
+      let updatedHallMapUrl = editingHall?.hallMapUrl ?? undefined;
+      let updatedEventMapUrl = editingHall?.eventMapUrl ?? undefined;
+
+      if (hallMapFile) {
+        const hRef = ref(storage, `maps/hall_${Date.now()}_${hallMapFile.name}`);
+        await uploadBytes(hRef, hallMapFile);
+        updatedHallMapUrl = await getDownloadURL(hRef);
+      }
+      if (eventMapFile) {
+        const eRef = ref(storage, `maps/event_${Date.now()}_${eventMapFile.name}`);
+        await uploadBytes(eRef, eventMapFile);
+        updatedEventMapUrl = await getDownloadURL(eRef);
+      }
+
       if (editingHall) {
-        await updateHall(editingHall.id, { hallName: hallName.trim(), hallCode: code, dimensions: dims });
-        setHalls((prev) => prev.map((h) => h.id === editingHall.id ? { ...h, hallName: hallName.trim(), hallCode: code, dimensions: dims } : h));
+        await updateHall(editingHall.id, { hallName: hallName.trim(), hallCode: code, dimensions: dims, hallMapUrl: updatedHallMapUrl, eventMapUrl: updatedEventMapUrl });
+        setHalls((prev) => prev.map((h) => h.id === editingHall.id ? { ...h, hallName: hallName.trim(), hallCode: code, dimensions: dims, hallMapUrl: updatedHallMapUrl, eventMapUrl: updatedEventMapUrl } : h));
         toast.success('Hall updated');
       } else {
-        const id = await createHall({ hallCode: code, hallName: hallName.trim(), dimensions: dims, stallCount: 0, availableCount: 0 });
+        const id = await createHall({ hallCode: code, hallName: hallName.trim(), dimensions: dims, stallCount: 0, availableCount: 0, hallMapUrl: updatedHallMapUrl, eventMapUrl: updatedEventMapUrl });
         const newHall: Hall = {
-          id, hallCode: code, hallName: hallName.trim(), dimensions: dims, stallCount: 0, availableCount: 0,
-          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+          id, hallCode: code, hallName: hallName.trim(), dimensions: dims, stallCount: 0, availableCount: 0, hallMapUrl: updatedHallMapUrl, eventMapUrl: updatedEventMapUrl,
+          createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
         };
         setHalls((prev) => [...prev, newHall]);
         setSelectedHall(newHall);
@@ -181,7 +204,7 @@ export default function HallsPage() {
         toast.success('Stall updated');
       } else {
         const id = await createStall(data);
-        setStalls((prev) => [...prev, { id, ...data, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }]);
+        setStalls((prev) => [...prev, { id, ...data, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }]);
         toast.success('Stall created');
       }
       setShowStallForm(false);
@@ -348,6 +371,28 @@ export default function HallsPage() {
           <FormGroup label="Hall Name" required>
             <input value={hallName} onChange={(e) => setHallName(e.target.value)} placeholder="e.g. Hall A" style={inputStyle} />
           </FormGroup>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
+            <FormGroup label="Hall Map Upload">
+              <input 
+                title='Hall Map'
+                type="file" 
+                accept="image/*"
+                onChange={(e) => setHallMapFile(e.target.files?.[0] || null)}
+                style={{...inputStyle, padding: '4px'}}
+              />
+              {editingHall?.hallMapUrl && !hallMapFile && <span style={{fontSize: 12, color: 'green'}}>Current map stored</span>}
+            </FormGroup>
+            <FormGroup label="Event Map Upload">
+              <input 
+                title='Event Map'
+                type="file" 
+                accept="image/*"
+                onChange={(e) => setEventMapFile(e.target.files?.[0] || null)}
+                style={{...inputStyle, padding: '4px'}}
+              />
+              {editingHall?.eventMapUrl && !eventMapFile && <span style={{fontSize: 12, color: 'green'}}>Current map stored</span>}
+            </FormGroup>
+          </div>
           <ModalActions onCancel={() => setShowHallForm(false)} onConfirm={saveHall} loading={hallSaving} label={editingHall ? 'Update' : 'Create Hall'} />
         </Modal>
       )}
@@ -359,8 +404,8 @@ export default function HallsPage() {
             <input value={stallCode} onChange={(e) => setStallCode(e.target.value)} placeholder="e.g. HA-01" style={inputStyle} />
           </FormGroup>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <FormGroup label="Length (m)"><input value={stallLength} onChange={(e) => setStallLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
-            <FormGroup label="Breadth (m)"><input value={stallBreadth} onChange={(e) => setStallBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Length (m)"><input title='Length in meters' value={stallLength} onChange={(e) => setStallLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Breadth (m)"><input title='Breadth in meters' value={stallBreadth} onChange={(e) => setStallBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           </div>
           {stallLength && stallBreadth && (
             <div style={{ padding: '8px 12px', background: '#F0FDF4', borderRadius: 8, marginBottom: '1rem', fontSize: 13, color: '#16A34A', fontWeight: 600 }}>
@@ -368,7 +413,7 @@ export default function HallsPage() {
             </div>
           )}
           <FormGroup label="Space Type">
-            <select value={stallSpaceType} onChange={(e) => setStallSpaceType(e.target.value)} style={inputStyle}>
+            <select title='Space Type' value={stallSpaceType} onChange={(e) => setStallSpaceType(e.target.value)} style={inputStyle}>
               {SPACE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormGroup>
@@ -396,13 +441,13 @@ export default function HallsPage() {
             <input value={bulkPrefix} onChange={(e) => setBulkPrefix(e.target.value)} placeholder="e.g. A" style={inputStyle} />
           </FormGroup>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <FormGroup label="Start Number"><input value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} type="number" style={inputStyle} /></FormGroup>
-            <FormGroup label="End Number"><input value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} type="number" style={inputStyle} /></FormGroup>
-            <FormGroup label="Length (m)"><input value={bulkLength} onChange={(e) => setBulkLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
-            <FormGroup label="Breadth (m)"><input value={bulkBreadth} onChange={(e) => setBulkBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Start Number"><input title='Initial number' value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="End Number"><input title='Final number' value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Length (m)"><input title='Length in meters' value={bulkLength} onChange={(e) => setBulkLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Breadth (m)"><input title='Breadth in meters' value={bulkBreadth} onChange={(e) => setBulkBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           </div>
           <FormGroup label="Space Type">
-            <select value={bulkSpaceType} onChange={(e) => setBulkSpaceType(e.target.value)} style={inputStyle}>
+            <select title='Space Type' value={bulkSpaceType} onChange={(e) => setBulkSpaceType(e.target.value)} style={inputStyle}>
               {SPACE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormGroup>

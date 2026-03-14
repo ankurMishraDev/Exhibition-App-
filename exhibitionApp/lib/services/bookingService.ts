@@ -48,15 +48,7 @@ export async function createBooking(params: {
       bookingDate: now,
       status: 'pending_approval',
       totalAmount: stall.totalPrice,
-      exhibitorSnapshot: {
-        contactPerson: exhibitor.contactPerson,
-        mobile: exhibitor.mobile,
-        email: exhibitor.email,
-        address: exhibitor.address,
-        city: exhibitor.city,
-        country: exhibitor.country,
-        website: exhibitor.website,
-      },
+      exhibitorSnapshot: exhibitor as any,
       productDetails: exhibitor.productDetails
         ? {
             segments: exhibitor.productDetails.segments,
@@ -93,7 +85,11 @@ export async function getExhibitorBookings(exhibitorId: string): Promise<Booking
   );
   const snap = await getDocs(q);
   const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
-  return bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return bookings.sort((a, b) => {
+    const timeA = (a.createdAt as any)?.toMillis?.() || 0;
+    const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+    return timeB - timeA;
+  });
 }
 
 export function subscribeToExhibitorBookings(
@@ -106,7 +102,11 @@ export function subscribeToExhibitorBookings(
   );
   return onSnapshot(q, (snap) => {
     const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
-    callback(bookings.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    callback(bookings.sort((a, b) => {
+      const timeA = (a.createdAt as any)?.toMillis?.() || 0;
+      const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+      return timeB - timeA;
+    }));
   });
 }
 

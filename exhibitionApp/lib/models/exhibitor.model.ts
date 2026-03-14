@@ -1,12 +1,16 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface ExhibitorModel {
   id: string;
   userId: string;
   contactPrefix: string;        // "Mr.", "Mrs.", "Dr." etc.
   contactPerson: string;        // Actual person name
+  chiefExecutiveName?: string;
   companyName: string;
   email: string;
   mobile: string;
   telephone: string;
+  fax?: string;
   address: string;
   city: string;
   state: string;
@@ -17,10 +21,14 @@ export interface ExhibitorModel {
   ippfMember: boolean;
   membershipNumber: string;
   logoUrl: string;
+  profileImage?: string;
+  gst?: string;
+  pan?: string;
+  tan?: string;
   productDetails?: ProductDetailsModel;
   isProfileComplete: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface ProductDetailsModel {
@@ -30,6 +38,6 @@ export interface ProductDetailsModel {
   categories: string[];         // Array of category strings
   machineryDescription: string;
   rawMaterialDescription: string;
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }

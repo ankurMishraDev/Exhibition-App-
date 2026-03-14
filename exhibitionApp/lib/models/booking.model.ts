@@ -1,3 +1,4 @@
+import { Timestamp } from 'firebase/firestore';
 import { ExhibitorModel, ProductDetailsModel } from './exhibitor.model';
 
 export type BookingStatus =
@@ -15,14 +16,14 @@ export interface BookingModel {
   exhibitorId: string;
   exhibitorName: string;
   companyName: string;
-  bookingDate: string;
+  bookingDate: Timestamp;
   status: BookingStatus;
   adminNotes?: string;
   approvedBy?: string;
-  approvedAt?: string;
+  approvedAt?: Timestamp;
   totalAmount: number;
   exhibitorSnapshot?: Partial<ExhibitorModel>;
   productDetails?: Partial<ProductDetailsModel>;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

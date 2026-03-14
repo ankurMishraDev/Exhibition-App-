@@ -35,7 +35,7 @@ export default function DashboardPage() {
           {greeting}, Admin 👋
         </h1>
         <p style={{ color: '#9CA3AF', marginTop: 6, fontSize: 14 }}>
-          Here's what's happening with PlastPack today.
+           Here&apos;s what&apos;s happening with PlastPack today.
         </p>
       </div>
 

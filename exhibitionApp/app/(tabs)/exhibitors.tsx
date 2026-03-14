@@ -59,22 +59,22 @@ export default function ExhibitorsListScreen() {
     // Determine category based on segments or default
     const category = item.productDetails?.segments?.[0] || 'Plastics';
     // Use stall placeholder or city
-    const locationStr = item.city ? item.city : 'Location TBD';
+    const locationStr = [item.city, item.state].filter(Boolean).join(', ') || 'Location TBD';
 
     return (
       <TouchableOpacity 
-        style={styles.card} 
+        style={styles.card}
         activeOpacity={0.7}
-        onPress={() => router.push(`/exhibitor/${item.id}`)}
+        onPress={() => router.push(`/exhibitor/${item.id}` as any)}
       >
         <View style={styles.cardContent}>
           <View style={styles.logoContainer}>
-            {item.logoUrl ? (
+            {item.profileImage ? (
+              <Image source={{ uri: item.profileImage }} style={styles.logo} />
+            ) : item.logoUrl ? (
               <Image source={{ uri: item.logoUrl }} style={styles.logo} />
             ) : (
-              <LinearGradient colors={[Colors.primary, Colors.primaryLight]} style={styles.logoPlaceholder}>
-                <Text style={styles.logoText}>{item.companyName?.[0]?.toUpperCase() || 'E'}</Text>
-              </LinearGradient>
+              <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
             )}
           </View>
           
@@ -87,6 +87,10 @@ export default function ExhibitorsListScreen() {
               <View style={styles.locationContainer}>
                 <Ionicons name="location-outline" size={12} color={Colors.textSecondary} />
                 <Text style={styles.locationText} numberOfLines={1}>{locationStr}</Text>
+              </View>
+              {/* Hall Placeholder */}
+              <View style={[styles.categoryPill, {backgroundColor: Colors.saffronLight}]}>
+                <Text style={[styles.categoryText, {color: Colors.saffron}]}>Hall TBD</Text>
               </View>
             </View>
           </View>

@@ -166,11 +166,17 @@ function BookingCard({
   onPress: () => void;
 }) {
   const { color, bg, icon, label } = getStatusStyle(booking.status);
-  const date = new Date(booking.createdAt).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const date = (booking.createdAt as any)?.toDate
+    ? (booking.createdAt as any).toDate().toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    : new Date(booking.createdAt as any).toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
@@ -212,7 +218,7 @@ function BookingCard({
           <Ionicons name="checkmark-circle-outline" size={14} color={Colors.available} />
           <Text style={styles.approvedNoteText}>
             Booking confirmed.{booking.approvedAt
-              ? ` Approved on ${new Date(booking.approvedAt).toLocaleDateString('en-IN')}`
+              ? ` Approved on ${(booking.approvedAt as any)?.toDate?.()?.toLocaleDateString('en-IN') || new Date(booking.approvedAt as any).toLocaleDateString('en-IN')}`
               : ''}
           </Text>
         </View>

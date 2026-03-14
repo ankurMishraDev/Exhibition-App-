@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export type UserRole = 'exhibitor' | 'visitor';
 
 export interface UserModel {
@@ -6,6 +8,6 @@ export interface UserModel {
   role: UserRole;
   displayName: string;
   fcmToken?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

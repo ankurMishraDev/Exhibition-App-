@@ -92,13 +92,13 @@ async function _createUserDoc(
   displayName: string,
   role: UserRole
 ): Promise<void> {
-  const userDoc: Omit<UserModel, 'updatedAt'> & { createdAt: unknown; updatedAt: unknown } = {
+  const userDoc = {
     uid,
     email,
     displayName,
     role,
-    createdAt: serverTimestamp() as unknown as string,
-    updatedAt: serverTimestamp() as unknown as string,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
   await setDoc(doc(db, 'users', uid), userDoc);
 }

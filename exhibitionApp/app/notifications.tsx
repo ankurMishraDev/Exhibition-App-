@@ -91,7 +91,7 @@ export default function NotificationsScreen() {
         <View style={styles.fcmNote}>
           <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
           <Text style={styles.fcmNoteText}>
-            Push notifications will be enabled in a future update. You'll receive real-time alerts for bookings, approvals, and event announcements.
+            Push notifications will be enabled in a future update. You&apos;ll receive real-time alerts for bookings, approvals, and event announcements.
           </Text>
         </View>
       </ScrollView>

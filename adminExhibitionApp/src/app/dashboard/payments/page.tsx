@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { Timestamp } from 'firebase/firestore';
 import {
   getAllBookings,
   getAllPayments,
@@ -127,7 +128,7 @@ export default function PaymentsPage() {
       const record: PaymentRecord = {
         amount: num,
         method,
-        date: new Date().toISOString(),
+        date: Timestamp.now(),
         reference: reference.trim() || undefined,
         notes: payNotes.trim() || undefined,
         screenshotUrl,
@@ -159,8 +160,8 @@ export default function PaymentsPage() {
           paidAmount: num,
           remainingAmount: Math.max(0, total - num),
           paymentRecords: [record],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
         };
       } else {
         await addPaymentRecord(booking.id, record);
@@ -304,7 +305,7 @@ export default function PaymentsPage() {
             <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" style={inputStyle} placeholder="Enter amount" autoFocus />
           </FormGroup>
           <FormGroup label="Payment Method">
-            <select value={method} onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
+            <select value={method} title='Payment Options' onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
               {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </FormGroup>
@@ -318,6 +319,7 @@ export default function PaymentsPage() {
             <input
               ref={fileInputRef}
               type="file"
+              title='Payment Screenshot'
               accept="image/*"
               onChange={handleScreenshotChange}
               style={{ display: 'none' }}
@@ -364,7 +366,7 @@ export default function PaymentsPage() {
                   <span style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E' }}>{formatCurrency(r.amount)}</span>
                   <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, background: '#E6F4F4', color: '#0D4F4F', padding: '2px 8px', borderRadius: 100 }}>{r.method}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{formatDate(r.date)}</div>
+                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{formatDate(r.recordedBy)}</div>
               </div>
               {r.reference && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Ref: {r.reference}</div>}
               {r.notes && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{r.notes}</div>}

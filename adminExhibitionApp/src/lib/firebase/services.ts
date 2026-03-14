@@ -8,6 +8,7 @@ import {
   query,
   where,
   onSnapshot,
+  serverTimestamp,
   Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -27,8 +28,8 @@ export interface Hall {
   eventMapUrl?: string;
   stallCount: number;
   availableCount: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Stall {
@@ -79,10 +80,12 @@ export interface Exhibitor {
   userId: string;
   contactPrefix: string;
   contactPerson: string;
+  chiefExecutiveName?: string;
   companyName: string;
   email: string;
   mobile: string;
   telephone?: string;
+  fax?: string;
   address: string;
   city: string;
   state?: string;
@@ -93,14 +96,18 @@ export interface Exhibitor {
   ippfMember: boolean;
   membershipNumber?: string;
   logoUrl?: string;
+  profileImage?: string;
+  gst?: string;
+  pan?: string;
+  tan?: string;
   productDetails?: {
     segments: string[];
     categories: string[];
     machineryDescription: string;
     rawMaterialDescription: string;
   };
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface Payment {
@@ -114,13 +121,13 @@ export interface Payment {
   paidAmount: number;
   remainingAmount: number;
   paymentRecords: PaymentRecord[];
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export interface PaymentRecord {
   amount: number;
-  date: string;
+  date: Timestamp;
   method: string;
   reference?: string;
   notes?: string;
@@ -138,14 +145,14 @@ export async function getHalls(): Promise<Hall[]> {
 export async function createHall(data: Omit<Hall, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   const ref = await addDoc(collection(db, 'halls'), {
     ...data,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
   return ref.id;
 }
 
 export async function updateHall(id: string, data: Partial<Hall>): Promise<void> {
-  await updateDoc(doc(db, 'halls', id), { ...data, updatedAt: new Date().toISOString() });
+  await updateDoc(doc(db, 'halls', id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function deleteHall(id: string): Promise<void> {
@@ -167,14 +174,14 @@ export async function getStallsByHall(hallId: string): Promise<Stall[]> {
 export async function createStall(data: Omit<Stall, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   const ref = await addDoc(collection(db, 'stalls'), {
     ...data,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
   return ref.id;
 }
 
 export async function updateStall(id: string, data: Partial<Stall>): Promise<void> {
-  await updateDoc(doc(db, 'stalls', id), { ...data, updatedAt: new Date().toISOString() });
+  await updateDoc(doc(db, 'stalls', id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function deleteStall(id: string): Promise<void> {
@@ -202,18 +209,18 @@ export async function approveBooking(
   adminEmail: string,
   notes?: string
 ): Promise<void> {
-  const now = new Date().toISOString();
+  const ts = serverTimestamp();
   await updateDoc(doc(db, 'bookings', bookingId), {
     status: 'approved',
     adminNotes: notes || '',
     approvedBy: adminEmail,
-    approvedAt: now,
-    updatedAt: now,
+    approvedAt: ts,
+    updatedAt: ts,
   });
   await updateDoc(doc(db, 'stalls', stallId), {
     status: 'booked',
     bookingId,
-    updatedAt: now,
+    updatedAt: ts,
   });
 }
 
@@ -222,17 +229,17 @@ export async function rejectBooking(
   stallId: string,
   notes: string
 ): Promise<void> {
-  const now = new Date().toISOString();
+  const ts = serverTimestamp();
   await updateDoc(doc(db, 'bookings', bookingId), {
     status: 'rejected',
     adminNotes: notes,
-    updatedAt: now,
+    updatedAt: ts,
   });
   await updateDoc(doc(db, 'stalls', stallId), {
     status: 'available',
     exhibitorId: null,
     bookingId: null,
-    updatedAt: now,
+    updatedAt: ts,
   });
 }
 
@@ -264,7 +271,6 @@ export async function addPaymentRecord(
   record: PaymentRecord
 ): Promise<void> {
   const existing = await getPaymentByBooking(bookingId);
-  const now = new Date().toISOString();
 
   if (existing) {
     const newPaid = existing.paidAmount + record.amount;
@@ -272,7 +278,7 @@ export async function addPaymentRecord(
       paidAmount: newPaid,
       remainingAmount: existing.totalAmount - newPaid,
       paymentRecords: [...existing.paymentRecords, record],
-      updatedAt: now,
+      updatedAt: serverTimestamp(),
     });
   }
 }
@@ -280,13 +286,11 @@ export async function addPaymentRecord(
 export async function createPaymentRecord(data: Omit<Payment, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
   const ref = await addDoc(collection(db, 'payments'), {
     ...data,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   });
   return ref.id;
 }
-
-// ─── Stats ────────────────────────────────────────────────────────────────────
 
 export async function getDashboardStats(): Promise<{
   totalBookings: number;

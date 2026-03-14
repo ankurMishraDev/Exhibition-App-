@@ -1,3 +1,4 @@
+import { Timestamp } from 'firebase/firestore';
 import { SpaceType } from '@/constants/segments';
 
 export type StallStatus = 'available' | 'reserved' | 'booked';
@@ -21,8 +22,8 @@ export interface StallModel {
   stallColor?: string;
   row?: number;
   col?: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 export function calculateStallPrice(length: number, breadth: number): {

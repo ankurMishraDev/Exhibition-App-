@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface HallModel {
   id: string;
   hallCode: string;
@@ -7,6 +9,6 @@ export interface HallModel {
   eventMapUrl?: string;
   stallCount: number;
   availableCount: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

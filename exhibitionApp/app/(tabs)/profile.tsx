@@ -25,6 +25,7 @@ export default function ProfileScreen() {
   const { user, userModel, isExhibitor } = useAuth();
   const [exhibitor, setExhibitor] = useState<ExhibitorModel | null>(null);
   const [bookingCount, setBookingCount] = useState(0);
+  const [bookedHalls, setBookedHalls] = useState('—');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,6 +39,11 @@ export default function ProfileScreen() {
           ]);
           setExhibitor(e);
           setBookingCount(bookings.length);
+          
+          if (bookings.length > 0) {
+            const halls = [...new Set(bookings.map((b) => b.hallName))];
+            setBookedHalls(halls.join(', '));
+          }
         }
       } catch {
         // silent
@@ -134,7 +140,7 @@ export default function ProfileScreen() {
             <View style={styles.statDivider} />
             <StatBox
               label="Hall"
-              value={exhibitor?.city || '—'}
+              value={bookedHalls}
               icon="location-outline"
             />
             <View style={styles.statDivider} />
@@ -147,7 +153,7 @@ export default function ProfileScreen() {
         )}
 
         {/* Event Info Card */}
-        <View style={styles.eventCard}>
+        {/* <View style={styles.eventCard}>
           <View style={styles.eventCardHeader}>
             <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
             <Text style={styles.eventCardTitle}>Upcoming Event</Text>
@@ -163,7 +169,7 @@ export default function ProfileScreen() {
               <Text style={styles.eventMetaText}>{EVENT_LOCATION}</Text>
             </View>
           </View>
-        </View>
+        </View> */}
 
         {/* Profile Actions */}
         <View style={styles.sectionCard}>

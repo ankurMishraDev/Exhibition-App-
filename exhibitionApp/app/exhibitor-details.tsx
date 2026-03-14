@@ -25,6 +25,7 @@ import {
   updateExhibitorProfile,
   saveProductDetails,
   uploadLogo,
+  uploadProfileImage,
 } from '@/lib/services/exhibitorService';
 import { ExhibitorModel } from '@/lib/models/exhibitor.model';
 
@@ -55,6 +56,14 @@ export default function ExhibitorDetailsScreen() {
   const [membershipNumber, setMembershipNumber] = useState('');
   const [logoUri, setLogoUri] = useState<string | null>(null);
   const [existingLogoUrl, setExistingLogoUrl] = useState<string>('');
+  
+  const [chiefExecutiveName, setChiefExecutiveName] = useState('');
+  const [fax, setFax] = useState('');
+  const [gst, setGst] = useState('');
+  const [pan, setPan] = useState('');
+  const [tan, setTan] = useState('');
+  const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
+  const [existingProfileImageUrl, setExistingProfileImageUrl] = useState<string>('');
 
   // Product details fields
   const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
@@ -90,6 +99,12 @@ export default function ExhibitorDetailsScreen() {
           setIppfMember(profile.ippfMember || false);
           setMembershipNumber(profile.membershipNumber || '');
           setExistingLogoUrl(profile.logoUrl || '');
+          setChiefExecutiveName(profile.chiefExecutiveName || '');
+          setFax(profile.fax || '');
+          setGst(profile.gst || '');
+          setPan(profile.pan || '');
+          setTan(profile.tan || '');
+          setExistingProfileImageUrl(profile.profileImage || '');
 
           if (profile.productDetails) {
             setSelectedSegments(profile.productDetails.segments || []);
@@ -123,6 +138,23 @@ export default function ExhibitorDetailsScreen() {
     }
   }
 
+  async function pickProfileImage() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please grant access to your photo library to upload a profile image.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setProfileImageUri(result.assets[0].uri);
+    }
+  }
+
   function toggleSegment(seg: string) {
     setSelectedSegments((prev) =>
       prev.includes(seg) ? prev.filter((s) => s !== seg) : [...prev, seg]
@@ -143,32 +175,41 @@ export default function ExhibitorDetailsScreen() {
     setSaving(true);
     try {
       let finalLogoUrl = existingLogoUrl;
+        let finalProfileImageUrl = existingProfileImageUrl;
 
-      // Upload logo if new one was picked
-      if (logoUri) {
-        finalLogoUrl = await uploadLogo(user.uid, logoUri);
-      }
+        // Upload logo if new one was picked
+        if (logoUri) {
+          finalLogoUrl = await uploadLogo(user.uid, logoUri);
+        }
 
-      const profileData = {
-        userId: user.uid,
-        contactPrefix: prefix,
-        contactPerson: contactPerson.trim(),
-        companyName: companyName.trim(),
-        email: email.trim(),
-        mobile: mobile.trim(),
-        telephone: telephone.trim(),
-        address: address.trim(),
-        city: city.trim(),
-        state: state.trim(),
-        pincode: pincode.trim(),
-        country,
-        website: website.trim(),
-        companyProfile: companyProfile.trim(),
-        ippfMember,
-        membershipNumber: ippfMember ? membershipNumber.trim() : '',
-        logoUrl: finalLogoUrl,
-      };
+        if (profileImageUri) {
+          finalProfileImageUrl = await uploadProfileImage(user.uid, profileImageUri);
+        }
 
+        const profileData = {
+          userId: user.uid,
+          contactPrefix: prefix,
+          contactPerson: contactPerson.trim(),
+          chiefExecutiveName: chiefExecutiveName.trim(),
+          companyName: companyName.trim(),
+          email: email.trim(),
+          mobile: mobile.trim(),
+          telephone: telephone.trim(),
+          fax: fax.trim(),
+          gst: gst.trim(),
+          pan: pan.trim(),
+          tan: tan.trim(),
+          address: address.trim(),
+          city: city.trim(),
+          state: state.trim(),
+          pincode: pincode.trim(),
+          country,
+          website: website.trim(),
+          companyProfile: companyProfile.trim(),
+          ippfMember,
+          membershipNumber: ippfMember ? membershipNumber.trim() : '',
+          logoUrl: finalLogoUrl,
+          profileImage: finalProfileImageUrl,        };
       if (existingProfile) {
         await updateExhibitorProfile(existingProfile.id, profileData);
       } else {
@@ -267,7 +308,27 @@ export default function ExhibitorDetailsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-
+            <View style={styles.logoRow}>
+              <TouchableOpacity style={styles.logoBox} onPress={pickProfileImage}>
+                {profileImageUri || existingProfileImageUrl ? (
+                  <Image
+                    source={{ uri: profileImageUri || existingProfileImageUrl }}
+                    style={styles.logoImage}
+                  />
+                ) : (
+                  <View style={styles.logoPlaceholder}>
+                    <Ionicons name="person-outline" size={28} color={Colors.primary} />
+                    <Text style={styles.logoPlaceholderText}>Profile Image</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.logoHint}>Upload a speaker/person profile picture</Text>
+                <TouchableOpacity onPress={pickProfileImage} style={styles.uploadBtn}>
+                  <Text style={styles.uploadBtnText}>Choose from Gallery</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           {/* Contact Prefix Picker inline */}
           <FormLabel label="Contact Person" required />
           <View style={styles.prefixRow}>
@@ -309,6 +370,15 @@ export default function ExhibitorDetailsScreen() {
             onChangeText={setCompanyName}
           />
 
+          <FormLabel label="Chief Executive Name" />
+          <TextInput
+            style={styles.input}
+            placeholder="CEO / MD Name"
+            placeholderTextColor={Colors.placeholder}
+            value={chiefExecutiveName}
+            onChangeText={setChiefExecutiveName}
+          />
+
           <FormLabel label="Email Address" required />
           <TextInput
             style={styles.input}
@@ -345,20 +415,31 @@ export default function ExhibitorDetailsScreen() {
             </View>
           </FormRow>
 
-          <FormLabel label="Website" />
-          <TextInput
-            style={styles.input}
-            placeholder="https://www.example.com"
-            placeholderTextColor={Colors.placeholder}
-            value={website}
-            onChangeText={setWebsite}
-            keyboardType="url"
-            autoCapitalize="none"
-          />
-
-          {/* ── Section 2: Address ── */}
-          <SectionHeader title="Address" icon="location-outline" />
-
+            <FormRow>
+              <View style={{ flex: 1 }}>
+                <FormLabel label="Fax" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Fax number"
+                  placeholderTextColor={Colors.placeholder}
+                  value={fax}
+                  onChangeText={setFax}
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <FormLabel label="Website" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="https://www.example.com"
+                  placeholderTextColor={Colors.placeholder}
+                  value={website}
+                  onChangeText={setWebsite}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                />
+              </View>
+            </FormRow>
           <FormLabel label="Address" required />
           <TextInput
             style={[styles.input, styles.multilineInput]}
@@ -485,22 +566,57 @@ export default function ExhibitorDetailsScreen() {
             </>
           )}
 
-          {/* ── Section 4: Products & Segments ── */}
-          <SectionHeader title="Products & Segments" icon="cube-outline" />
+            <SectionHeader title="Tax Information" icon="card-outline" />
 
-          <Text style={styles.segmentPrompt}>
-            Select all product segments you will be exhibiting (select multiple):
-          </Text>
-          <View style={styles.segmentsGrid}>
-            {PRODUCT_SEGMENTS.map((seg) => {
-              const active = selectedSegments.includes(seg);
-              return (
-                <TouchableOpacity
-                  key={seg}
-                  style={[styles.segment, active && styles.segmentActive]}
-                  onPress={() => toggleSegment(seg)}
-                  activeOpacity={0.8}
-                >
+            <FormRow>
+              <View style={{ flex: 1 }}>
+                <FormLabel label="GST Number" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="GSTIN"
+                  placeholderTextColor={Colors.placeholder}
+                  value={gst}
+                  onChangeText={setGst}
+                  autoCapitalize="characters"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <FormLabel label="PAN Number" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="PAN"
+                  placeholderTextColor={Colors.placeholder}
+                  value={pan}
+                  onChangeText={setPan}
+                  autoCapitalize="characters"
+                />
+              </View>
+            </FormRow>
+
+            <FormLabel label="TAN Number" />
+            <TextInput
+              style={styles.input}
+              placeholder="TAN (optional)"
+              placeholderTextColor={Colors.placeholder}
+              value={tan}
+              onChangeText={setTan}
+              autoCapitalize="characters"
+            />
+
+          {/* ── Product details ── */}
+          <SectionHeader title="Product Details" icon="cube-outline" />
+            
+            <FormLabel label="Segments involved in" />
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md}}>
+              {['Raw Materials', 'Machinery', 'Finished Products', 'Recycling', 'Others'].map((seg) => {
+                const active = selectedSegments.includes(seg);
+                return (
+                  <TouchableOpacity
+                    key={seg}
+                    style={[styles.segment, active && styles.segmentActive]}
+                    onPress={() => toggleSegment(seg)}
+                    activeOpacity={0.8}
+                  >
                   {active && (
                     <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
                   )}

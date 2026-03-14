@@ -6,3 +6,4 @@ database
 adminExhibitionApp/scripts/seed-firebase.mjs
 adminExhibitionApp/firestore.indexes.json
 adminExhibitionApp/storage.rules
+.hintrc
