@@ -4,7 +4,7 @@ export const Colors = {
   primaryLight: '#B9328B',
   primaryDark: '#80135A',
   primarySurface: '#FBE8F4',
-
+  black: '#000000',
   // Indian tricolor accent
   saffron: '#FF9933',
   saffronLight: '#FFE5C0',

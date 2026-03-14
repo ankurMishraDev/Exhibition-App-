@@ -5,16 +5,18 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  RefreshControl,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Colors as ThemeColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { subscribeToExhibitorBookings } from '@/lib/services/bookingService';
+import { subscribeToExhibitorPayments } from '@/lib/services/paymentService';
 import { BookingModel, BookingStatus } from '@/lib/models/booking.model';
+import { PaymentModel } from '@/lib/models/payment.model';
 
 const STATUS_FILTERS: { label: string; value: BookingStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
@@ -23,10 +25,21 @@ const STATUS_FILTERS: { label: string; value: BookingStatus | 'all' }[] = [
   { label: 'Rejected', value: 'rejected' },
 ];
 
+// Reusing colors from Stitch UI payload
+const Colors = {
+  ...ThemeColors,
+  magenta: '#9F1A71',
+  softPink: '#FFF5F9',
+  bgDark: '#1a0412',
+  textHeader: '#FFF9FB',
+};
+
 export default function BookingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, isExhibitor, isVisitor } = useAuth();
   const [bookings, setBookings] = useState<BookingModel[]>([]);
+  const [payments, setPayments] = useState<PaymentModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<BookingStatus | 'all'>('all');
 
@@ -35,23 +48,34 @@ export default function BookingsScreen() {
       setLoading(false);
       return;
     }
-    const unsubscribe = subscribeToExhibitorBookings(user.uid, (data) => {
+    const unsubBookings = subscribeToExhibitorBookings(user.uid, (data) => {
       setBookings(data);
       setLoading(false);
     });
-    return unsubscribe;
+    const unsubPayments = subscribeToExhibitorPayments(user.uid, (data) => {
+      setPayments(data);
+    });
+    return () => {
+      unsubBookings();
+      unsubPayments();
+    };
   }, [user, isVisitor]);
 
-  const filtered =
-    filter === 'all'
-      ? bookings
-      : bookings.filter((b) => b.status === filter);
+  const filtered = filter === 'all' ? bookings : bookings.filter((b) => b.status === filter);
+
+  // Aggregates
+  const totalStalls = bookings.filter(b => b.status === 'approved' || b.status === 'pending_approval').length;
+  const overallCost = bookings.filter(b => b.status === 'approved' || b.status === 'pending_approval').reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  
+  // Calculate paid amount from payments
+  const paidAmount = payments.reduce((sum, p) => sum + (p.paidAmount || 0), 0);
+  const remainingAmount = overallCost - paidAmount;
 
   if (isVisitor) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.screenHeader}>
-          <Text style={styles.screenHeaderTitle}>My Bookings</Text>
+      <View style={[styles.safe, { paddingTop: insets.top }]}>
+        <View style={styles.topHeader}>
+          <Text style={styles.headerTitle}>My Bookings</Text>
         </View>
         <View style={styles.emptyState}>
           <Ionicons name="calendar-outline" size={64} color={Colors.textMuted} />
@@ -60,193 +84,147 @@ export default function BookingsScreen() {
             Bookings are available for exhibitors.{'\n'}Register as an exhibitor to book stalls.
           </Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.screenHeader}>
-        <Text style={styles.screenHeaderTitle}>My Bookings</Text>
-        <View style={styles.bookingCount}>
-          <Text style={styles.bookingCountText}>{bookings.length}</Text>
+    <View style={styles.container}>
+      {/* Stitch UI Magenta Header */}
+      <View style={[styles.heroHeader, { paddingTop: insets.top + 16 }]}>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.headerTitleWhite}>My Bookings</Text>
+        </View>
+        
+        <View style={styles.heroContent}>
+          <Text style={styles.heroSubtitle}>OVERALL STALL COST</Text>
+          <Text style={styles.heroAmount}>₹{overallCost.toLocaleString('en-IN')}</Text>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{totalStalls}</Text>
+              <Text style={styles.statLabel}>Total Stalls</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>₹{paidAmount.toLocaleString('en-IN')}</Text>
+              <Text style={styles.statLabel}>Amount Paid</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>₹{remainingAmount.toLocaleString('en-IN')}</Text>
+              <Text style={styles.statLabel}>Remaining</Text>
+            </View>
+          </View>
         </View>
       </View>
 
-      {/* Filter tabs */}
-      <View style={styles.filterRow}>
-        {STATUS_FILTERS.map((f) => {
-          const count =
-            f.value === 'all'
-              ? bookings.length
-              : bookings.filter((b) => b.status === f.value).length;
-          return (
-            <TouchableOpacity
-              key={f.value}
-              style={[styles.filterTab, filter === f.value && styles.filterTabActive]}
-              onPress={() => setFilter(f.value)}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  filter === f.value && styles.filterTabTextActive,
-                ]}
-              >
-                {f.label}
-              </Text>
-              {count > 0 && (
-                <View
-                  style={[
-                    styles.filterBadge,
-                    filter === f.value && styles.filterBadgeActive,
-                  ]}
+      {/* Main Content Area */}
+      <View style={styles.contentArea}>
+        {/* Filter tabs */}
+        <View style={styles.filterRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            {STATUS_FILTERS.map((f) => {
+              const count = f.value === 'all'
+                  ? bookings.length
+                  : bookings.filter((b) => b.status === f.value).length;
+              return (
+                <TouchableOpacity
+                  key={f.value}
+                  style={[styles.filterTab, filter === f.value && styles.filterTabActive]}
+                  onPress={() => setFilter(f.value)}
                 >
-                  <Text
-                    style={[
-                      styles.filterBadgeText,
-                      filter === f.value && styles.filterBadgeTextActive,
-                    ]}
-                  >
-                    {count}
+                  <Text style={[styles.filterTabText, filter === f.value && styles.filterTabTextActive]}>
+                    {f.label}
                   </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+                  {count > 0 && (
+                    <View style={[styles.filterBadge, filter === f.value && styles.filterBadgeActive]}>
+                      <Text style={[styles.filterBadgeText, filter === f.value && styles.filterBadgeTextActive]}>
+                        {count}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-      {loading ? (
-        <View style={styles.loaderCenter}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
-      ) : filtered.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="calendar-outline" size={64} color={Colors.textMuted} />
-          <Text style={styles.emptyTitle}>
-            {filter === 'all' ? 'No bookings yet' : `No ${filter.replace('_', ' ')} bookings`}
-          </Text>
-          <Text style={styles.emptySubtitle}>
-            {filter === 'all'
-              ? 'Browse halls and book your stall for PlastPack'
-              : 'Try a different filter to see other bookings'}
-          </Text>
-          {filter === 'all' && (
-            <TouchableOpacity
-              style={styles.bookNowBtn}
-              onPress={() => router.push('/hall-selection')}
-            >
-              <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
-              <Text style={styles.bookNowBtnText}>Book a Stall</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <BookingCard booking={item} onPress={() => {/* detail screen future */}} />
-          )}
-        />
-      )}
-    </SafeAreaView>
+        {loading ? (
+          <View style={styles.loaderCenter}>
+            <ActivityIndicator size="large" color={Colors.magenta} />
+          </View>
+        ) : filtered.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="calendar-outline" size={64} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>
+              {filter === 'all' ? 'No bookings yet' : `No ${filter.replace('_', ' ')} bookings`}
+            </Text>
+            {filter === 'all' && (
+              <TouchableOpacity
+                style={styles.bookNowBtn}
+                onPress={() => router.push('/hall-selection')}
+              >
+                <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
+                <Text style={styles.bookNowBtnText}>Book a Stall</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <BookingCard booking={item} onPress={() => router.push(`/booking-receipt?id=${item.id}`)} />
+            )}
+          />
+        )}
+      </View>
+    </View>
   );
 }
 
 // ─── BookingCard ──────────────────────────────────────────────────────────────
 
-function BookingCard({
-  booking,
-  onPress,
-}: {
-  booking: BookingModel;
-  onPress: () => void;
-}) {
-  const { color, bg, icon, label } = getStatusStyle(booking.status);
-  const date = (booking.createdAt as any)?.toDate
-    ? (booking.createdAt as any).toDate().toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      })
-    : new Date(booking.createdAt as any).toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      });
+function BookingCard({ booking, onPress }: { booking: BookingModel; onPress: () => void; }) {
+  const { color, icon, label } = getStatusStyle(booking.status);
+  const dateObj = (booking.createdAt as any)?.toDate ? (booking.createdAt as any).toDate() : new Date(booking.createdAt as any);
+  const date = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
-      {/* Card top */}
-      <View style={styles.cardTop}>
-        <View style={styles.stallCodeWrap}>
-          <Text style={styles.stallCode}>{booking.stallCode}</Text>
-          <Text style={styles.hallName}>{booking.hallName}</Text>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.9}>
+      <View style={styles.cardHeader}>
+        <View style={styles.iconContainer}>
+          <MaterialIcons name="storefront" size={24} color={Colors.magenta} />
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: bg }]}>
-          <Ionicons name={icon as never} size={12} color={color} />
+        <View style={styles.cardHeaderWrap}>
+          <Text style={styles.stallCode}>{booking.stallCode || 'STALL'}</Text>
+          <Text style={styles.hallName}>{booking.hallName || 'Exhibition Hall'}</Text>
+        </View>
+        <View style={[styles.statusPill, { backgroundColor: `${color}15` }]}>
+          <Ionicons name={icon as any} size={14} color={color} />
           <Text style={[styles.statusText, { color }]}>{label}</Text>
         </View>
       </View>
 
-      <View style={styles.cardDivider} />
-
-      {/* Card details */}
-      <View style={styles.cardDetails}>
-        <CardDetail icon="calendar-outline" text={`Booked on ${date}`} />
-        <CardDetail
-          icon="pricetag-outline"
-          text={`₹${booking.totalAmount.toLocaleString('en-IN')}`}
-          highlight
-        />
+      <View style={styles.cardInfoRow}>
+        <View style={styles.infoCol}>
+          <Text style={styles.infoLabel}>Booking Date</Text>
+          <Text style={styles.infoValue}>{date}</Text>
+        </View>
+        <View style={styles.infoCol}>
+          <Text style={styles.infoLabel}>Amount</Text>
+          <Text style={styles.infoValueHighlight}>₹{(booking.totalAmount || 0).toLocaleString('en-IN')}</Text>
+        </View>
       </View>
 
-      {/* Admin notes if rejected */}
-      {booking.status === 'rejected' && booking.adminNotes && (
-        <View style={styles.adminNote}>
-          <Ionicons name="chatbubble-outline" size={14} color={Colors.error} />
-          <Text style={styles.adminNoteText}>{booking.adminNotes}</Text>
-        </View>
-      )}
-
-      {/* Approved confirmation */}
-      {booking.status === 'approved' && (
-        <View style={styles.approvedNote}>
-          <Ionicons name="checkmark-circle-outline" size={14} color={Colors.available} />
-          <Text style={styles.approvedNoteText}>
-            Booking confirmed.{booking.approvedAt
-              ? ` Approved on ${(booking.approvedAt as any)?.toDate?.()?.toLocaleDateString('en-IN') || new Date(booking.approvedAt as any).toLocaleDateString('en-IN')}`
-              : ''}
-          </Text>
-        </View>
-      )}
+      <View style={styles.cardFooter}>
+        <Text style={styles.viewReceiptText}>View Full Receipt</Text>
+        <Ionicons name="chevron-forward" size={16} color={Colors.magenta} />
+      </View>
     </TouchableOpacity>
-  );
-}
-
-function CardDetail({
-  icon,
-  text,
-  highlight,
-}: {
-  icon: string;
-  text: string;
-  highlight?: boolean;
-}) {
-  return (
-    <View style={styles.cardDetailRow}>
-      <Ionicons
-        name={icon as never}
-        size={14}
-        color={highlight ? Colors.primary : Colors.textMuted}
-      />
-      <Text style={[styles.cardDetailText, highlight && styles.cardDetailTextHighlight]}>
-        {text}
-      </Text>
-    </View>
   );
 }
 
@@ -255,235 +233,250 @@ function CardDetail({
 function getStatusStyle(status: BookingStatus) {
   switch (status) {
     case 'pending_approval':
-      return {
-        color: '#D97706',
-        bg: '#FEF3C7',
-        icon: 'time-outline',
-        label: 'Pending',
-      };
+      return { color: '#F59E0B', icon: 'time', label: 'Pending' };
     case 'approved':
-      return {
-        color: Colors.available,
-        bg: Colors.availableLight,
-        icon: 'checkmark-circle-outline',
-        label: 'Approved',
-      };
+      return { color: '#10B981', icon: 'checkmark-circle', label: 'Approved' };
     case 'rejected':
-      return {
-        color: Colors.error,
-        bg: '#FEE2E2',
-        icon: 'close-circle-outline',
-        label: 'Rejected',
-      };
+      return { color: '#EF4444', icon: 'close-circle', label: 'Rejected' };
     case 'cancelled':
-      return {
-        color: Colors.textMuted,
-        bg: Colors.surfaceVariant,
-        icon: 'ban-outline',
-        label: 'Cancelled',
-      };
+      return { color: '#6B7280', icon: 'ban', label: 'Cancelled' };
+    default:
+      return { color: '#6B7280', icon: 'help-circle', label: 'Unknown' };
   }
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: Colors.background },
-  loaderCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-
-  screenHeader: {
+  container: { flex: 1, backgroundColor: Colors.softPink },
+  safe: { flex: 1, backgroundColor: Colors.white },
+  
+  heroHeader: {
+    backgroundColor: Colors.magenta,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    position: 'relative',
+    zIndex: 10,
+  },
+  headerTopRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.base,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.md,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  screenHeaderTitle: {
-    flex: 1,
-    fontSize: Typography.size.xl,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-  },
-  bookingCount: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.primarySurface,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.xs,
+    marginBottom: 24,
   },
-  bookingCountText: {
-    fontSize: Typography.size.sm,
+  headerTitleWhite: {
+    fontSize: 20,
     fontWeight: '700',
-    color: Colors.primary,
+    color: Colors.white,
+    letterSpacing: 0.5,
+  },
+  heroContent: {
+    alignItems: 'center',
+  },
+  heroSubtitle: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  heroAmount: {
+    color: Colors.white,
+    fontSize: 36,
+    fontWeight: '800',
+    lineHeight: 44,
+    marginBottom: 24,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    width: '100%',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  statBox: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  statLabel: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
 
-  // Filters
+  contentArea: {
+    flex: 1,
+    marginTop: 4,
+    zIndex: 5,
+  },
+
   filterRow: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.base,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  filterScroll: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    gap: 8,
   },
   filterTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: Radius.full,
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.white,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surfaceVariant,
+    borderColor: '#F1F5F9',
+    shadowColor: Colors.magenta,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   filterTabActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: Colors.magenta,
+    borderColor: Colors.magenta,
   },
   filterTabText: {
-    fontSize: Typography.size.xs,
+    fontSize: 13,
     fontWeight: '600',
-    color: Colors.textSecondary,
+    color: '#64748B',
   },
   filterTabTextActive: { color: Colors.white },
   filterBadge: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: Colors.border,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
-  filterBadgeActive: { backgroundColor: 'rgba(255,255,255,0.3)' },
-  filterBadgeText: {
-    fontSize: Typography.size.xs - 1,
-    fontWeight: '700',
-    color: Colors.textMuted,
-  },
+  filterBadgeActive: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  filterBadgeText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
   filterBadgeTextActive: { color: Colors.white },
 
   listContent: {
-    padding: Spacing.base,
-    gap: Spacing.md,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+    gap: 16,
   },
-
-  // Card
+  
   card: {
     backgroundColor: Colors.white,
-    borderRadius: Radius.lg,
-    padding: Spacing.base,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    ...Shadow.sm,
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: Colors.magenta,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
   },
-  cardTop: {
+  cardHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  stallCodeWrap: { flex: 1 },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: Colors.softPink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  cardHeaderWrap: { flex: 1 },
   stallCode: {
-    fontSize: Typography.size.xl,
+    fontSize: 18,
     fontWeight: '800',
-    color: Colors.primary,
+    color: '#0F172A',
+    marginBottom: 2,
   },
   hallName: {
-    fontSize: Typography.size.sm,
-    color: Colors.textMuted,
-    marginTop: 2,
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
   },
-  statusBadge: {
+  statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: Radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  statusText: { fontSize: Typography.size.xs, fontWeight: '700' },
-  cardDivider: {
-    height: 1,
-    backgroundColor: Colors.divider,
-    marginVertical: Spacing.md,
-  },
-  cardDetails: { flexDirection: 'row', gap: Spacing.base },
-  cardDetailRow: {
+  statusText: { fontSize: 11, fontWeight: '700' },
+  
+  cardInfoRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
-  cardDetailText: {
-    fontSize: Typography.size.sm,
-    color: Colors.textSecondary,
-  },
-  cardDetailTextHighlight: {
-    color: Colors.primary,
+  infoCol: { flex: 1 },
+  infoLabel: {
+    fontSize: 10,
+    color: '#64748B',
     fontWeight: '700',
-    fontSize: Typography.size.base,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
   },
-  adminNote: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-    padding: Spacing.sm,
-    backgroundColor: '#FEE2E2',
-    borderRadius: Radius.sm,
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#334155',
   },
-  adminNoteText: { flex: 1, fontSize: Typography.size.xs, color: Colors.error },
-  approvedNote: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-    padding: Spacing.sm,
-    backgroundColor: Colors.availableLight,
-    borderRadius: Radius.sm,
-  },
-  approvedNoteText: {
-    flex: 1,
-    fontSize: Typography.size.xs,
-    color: Colors.available,
-    fontWeight: '500',
+  infoValueHighlight: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.magenta,
   },
 
-  // Empty
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing['2xl'],
-    gap: Spacing.md,
-  },
-  emptyTitle: {
-    fontSize: Typography.size.xl,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: Typography.size.sm,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  bookNowBtn: {
+  cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
-    marginTop: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.full,
-    ...Shadow.md,
+    justifyContent: 'center',
+    gap: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 16,
   },
-  bookNowBtnText: { color: Colors.white, fontWeight: '700', fontSize: Typography.size.sm },
+  viewReceiptText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.magenta,
+  },
+
+  loaderCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyState: { alignItems: 'center', padding: 40, marginTop: 40 },
+  topHeader: { padding: 20, borderBottomWidth: 1, borderColor: '#eee' },
+  headerTitle: { fontSize: 24, fontWeight: 'bold' },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 12 },
+  emptySubtitle: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 8 },
+  bookNowBtn: { backgroundColor: Colors.magenta, padding: 12, borderRadius: 24, marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bookNowBtnText: { color: 'white', fontWeight: 'bold' },
 });

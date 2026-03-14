@@ -18,7 +18,7 @@ import { EVENT_DATE, EVENT_LOCATION, EVENT_NAME } from '@/constants/segments';
 const { width } = Dimensions.get('window');
 
 const EVENT_STATS = [
-  { label: 'Total Stalls', value: '250+', icon: 'storefront-outline' },
+  { label: 'Total Stalls', value: '350+', icon: 'storefront-outline' },
   { label: 'Halls', value: '10', icon: 'business-outline' },
   { label: 'Price From', value: '₹15k', icon: 'pricetag-outline' },
 ];
@@ -56,11 +56,11 @@ export default function HomeScreen() {
           <View style={styles.bannerContent}>
             <View style={styles.bannerTop}>
               <View>
-                <Text style={styles.greetingText}>Hello, {firstName}! 👋</Text>
-                <View style={styles.locationRow}>
+                <Text style={styles.greetingText}>Hello, {firstName}</Text>
+                {/* <View style={styles.locationRow}>
                   <Ionicons name="location-outline" size={14} color="rgba(255,255,255,0.8)" />
                   <Text style={styles.locationText}>{EVENT_LOCATION}</Text>
-                </View>
+                </View> */}
               </View>
               <TouchableOpacity
                 style={styles.notifBtn}
@@ -113,7 +113,7 @@ export default function HomeScreen() {
                 <View style={styles.visitorNote}>
                   <Ionicons name="information-circle-outline" size={16} color={Colors.primary} />
                   <Text style={styles.visitorNoteText}>
-                    Visitor mode — Browse halls and exhibitor listings
+                    Explore the event halls, discover exhibitors, and plan your visit with our interactive map and personalized schedule features.
                   </Text>
                 </View>
               )}
@@ -141,11 +141,11 @@ export default function HomeScreen() {
         {/* ─── About Event ──────────────────────────────────── */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>About PlastPack</Text>
+            <Text style={styles.sectionTitle}>About Plast Pack</Text>
           </View>
           <View style={styles.aboutCard}>
             <Text style={styles.aboutText}>
-              {"PlastPack is India's premier plastics and packaging exhibition, bringing together manufacturers, suppliers, and innovators from across the globe. This year's event showcases groundbreaking advances in sustainable plastics, modern packaging technology, and industrial processing machinery."}
+              {"Plast Pack is India's premier plastics and packaging exhibition, bringing together manufacturers, suppliers, and innovators from across the globe. This year's event showcases groundbreaking advances in sustainable plastics, modern packaging technology, and industrial processing machinery."}
             </Text>
             <TouchableOpacity style={styles.readMoreBtn} onPress={() => router.push('/event/plastpack-2026' as never)}>
               <Text style={styles.readMoreText}>View Event Details</Text>
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
   },
   greetingText: {
     fontSize: Typography.size.xl,
-    fontWeight: '700',
+    fontWeight: '900',
     color: Colors.white,
   },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },

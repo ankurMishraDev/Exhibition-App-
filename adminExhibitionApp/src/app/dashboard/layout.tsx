@@ -8,10 +8,12 @@ import { toast } from 'sonner';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview', icon: '📊' },
-  { href: '/dashboard/bookings', label: 'Bookings', icon: '📋' },
-  { href: '/dashboard/halls', label: 'Halls & Stalls', icon: '🏛️' },
+  { href: '/dashboard/bookings', label: 'Bookings', icon: '📝' },
+  { href: '/dashboard/halls', label: 'Halls & Stalls', icon: '🖼️' },
   { href: '/dashboard/exhibitors', label: 'Exhibitors', icon: '🏢' },
   { href: '/dashboard/payments', label: 'Payments', icon: '💳' },
+  { href: '/dashboard/event-map', label: 'Event Maps', icon: '🗺️' },
+  { href: '/dashboard/profile-image', label: 'Profile Images', icon: '📸' },
 ];
 
 export default function DashboardLayout({

@@ -114,7 +114,7 @@ export function uploadProfileImage(
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-      const storageRef = ref(storage, `profiles/${exhibitorId}/profile.jpg`);
+      const storageRef = ref(storage, `profile-image/${exhibitorId}_${Date.now()}.jpg`);
       const task: UploadTask = uploadBytesResumable(storageRef, blob);
 
       task.on(
@@ -144,7 +144,7 @@ export function uploadLogo(
     try {
       const response = await fetch(uri);
       const blob = await response.blob();
-      const storageRef = ref(storage, `logos/${exhibitorId}/logo.jpg`);
+      const storageRef = ref(storage, `exhibitor-logos/${exhibitorId}_${Date.now()}.jpg`);
       const task: UploadTask = uploadBytesResumable(storageRef, blob);
 
       task.on(

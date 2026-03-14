@@ -191,12 +191,12 @@ export default function ProfileScreen() {
             onPress={() => router.push('/(tabs)/bookings')}
           />
 
-          <MenuItem
+          {/* <MenuItem
             icon="time-outline"
             label="Booking History"
             sub="Past bookings and their status"
             onPress={() => router.push('/(tabs)/history')}
-          />
+          /> */}
 
           <MenuItem
             icon="notifications-outline"

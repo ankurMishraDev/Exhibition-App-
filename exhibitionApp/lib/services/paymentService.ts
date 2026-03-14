@@ -48,3 +48,17 @@ export function subscribeToPayment(
     }
   });
 }
+
+export function subscribeToExhibitorPayments(
+  exhibitorId: string,
+  callback: (payments: PaymentModel[]) => void
+): Unsubscribe {
+  const q = query(
+    collection(db, 'payments'),
+    where('exhibitorId', '==', exhibitorId)
+  );
+  return onSnapshot(q, (snap) => {
+    const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as PaymentModel));
+    callback(data);
+  });
+}

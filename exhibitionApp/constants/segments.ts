@@ -45,6 +45,6 @@ export const COUNTRIES = [
   'Other',
 ];
 
-export const EVENT_NAME = 'PlastPack 2026';
+export const EVENT_NAME = 'Plast Pack 2026';
 export const EVENT_LOCATION = 'Labhganga Exhibition Centre, Indore M.P.';
 export const EVENT_DATE = '27–30 November 2026';

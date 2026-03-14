@@ -13,8 +13,15 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-IN', {
+export function formatDate(dateVal: any): string {
+  if (!dateVal) return 'N/A';
+  let dateObj = dateVal;
+  if (typeof dateVal.toDate === 'function') {
+    dateObj = dateVal.toDate();
+  } else if (typeof dateVal === 'string' || typeof dateVal === 'number') {
+    dateObj = new Date(dateVal);
+  }
+  return dateObj.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
