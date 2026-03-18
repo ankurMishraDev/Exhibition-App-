@@ -1,15 +1,17 @@
 import { Timestamp } from 'firebase/firestore';
 
 export interface PaymentRecord {
-  recordId: string;
+  recordId?: string;
   amount: number;
   date: Timestamp;
   method: string;
   transactionId?: string;
+  reference?: string;
   notes?: string;
   screenshotUrl?: string;
-  addedBy: string;
-  addedAt: Timestamp;
+  addedBy?: string;
+  addedAt?: Timestamp;
+  recordedBy?: string;
 }
 
 export interface PaymentModel {

@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TextInput,
   StyleSheet,
   ScrollView,
   FlatList,
@@ -21,6 +22,7 @@ import { subscribeToHallStalls } from '@/lib/services/stallService';
 import { HallModel } from '@/lib/models/hall.model';
 import { StallModel, StallStatus } from '@/lib/models/stall.model';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import { PRODUCT_SEGMENTS } from '@/constants/segments';
 
 const { width, height } = Dimensions.get('window');
 const STALL_SIZE = (width - Spacing.base * 2 - Spacing.sm * 3) / 4;
@@ -36,6 +38,10 @@ export default function HallSelectionScreen() {
   const [showEventMap, setShowEventMap] = useState(false);
   const [showHallMap, setShowHallMap] = useState(false);
   const [showHallDropdown, setShowHallDropdown] = useState(false);
+  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
+  const [categories, setCategories] = useState('');
+  const [machineryDescription, setMachineryDescription] = useState('');
+  const [rawMaterialDescription, setRawMaterialDescription] = useState('');
   const slideAnim = useRef(new Animated.Value(height)).current;
 
   // Load halls initially
@@ -84,18 +90,39 @@ export default function HallSelectionScreen() {
 
   function handleStallPress(stall: StallModel) {
     if (stall.status === 'booked') return; // already booked
+    setSelectedSegments([]);
+    setCategories('');
+    setMachineryDescription('');
+    setRawMaterialDescription('');
     setSelectedStall(stall);
     openBottomSheet();
   }
 
+  function toggleSegment(seg: string) {
+    setSelectedSegments((prev) =>
+      prev.includes(seg) ? prev.filter((item) => item !== seg) : [...prev, seg],
+    );
+  }
+
   function handleProceed() {
     if (!selectedStall || !selectedHall) return;
+    const productDetailsPayload = {
+      segments: selectedSegments,
+      categories: categories
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+      machineryDescription: machineryDescription.trim(),
+      rawMaterialDescription: rawMaterialDescription.trim(),
+    };
     closeBottomSheet();
     router.push({
       pathname: '/exhibitor-details',
       params: {
         stallId: selectedStall.id,
         hallId: selectedHall.id,
+        bookingContext: 'stall-booking',
+        productDetails: JSON.stringify(productDetailsPayload),
       },
     });
   }
@@ -259,6 +286,65 @@ export default function HallSelectionScreen() {
                   ))}
                 </View>
               )}
+            </View>
+
+            <View style={styles.productDetailsSection}>
+              <Text style={styles.productSectionTitle}>Product Details For This Stall</Text>
+              <Text style={styles.productSectionSubtitle}>
+                These details will be attached to this booking request only.
+              </Text>
+
+              <Text style={styles.inputLabel}>Product Segments</Text>
+              <View style={styles.segmentWrap}>
+                {PRODUCT_SEGMENTS.map((segment) => {
+                  const active = selectedSegments.includes(segment);
+                  return (
+                    <TouchableOpacity
+                      key={segment}
+                      style={[styles.segmentChip, active && styles.segmentChipActive]}
+                      onPress={() => toggleSegment(segment)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.segmentChipText, active && styles.segmentChipTextActive]}>
+                        {segment}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.inputLabel}>Categories</Text>
+              <TextInput
+                style={styles.sheetInput}
+                placeholder="e.g. PET Bottles, Packaging Films"
+                placeholderTextColor={Colors.placeholder}
+                value={categories}
+                onChangeText={setCategories}
+              />
+
+              <Text style={styles.inputLabel}>Machinery Description</Text>
+              <TextInput
+                style={[styles.sheetInput, styles.sheetInputMultiline]}
+                placeholder="Optional"
+                placeholderTextColor={Colors.placeholder}
+                value={machineryDescription}
+                onChangeText={setMachineryDescription}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
+
+              <Text style={styles.inputLabel}>Raw Material Description</Text>
+              <TextInput
+                style={[styles.sheetInput, styles.sheetInputMultiline]}
+                placeholder="Optional"
+                placeholderTextColor={Colors.placeholder}
+                value={rawMaterialDescription}
+                onChangeText={setRawMaterialDescription}
+                multiline
+                numberOfLines={3}
+                textAlignVertical="top"
+              />
             </View>
 
             {selectedStall.status === 'available' && (
@@ -765,6 +851,69 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xs,
     color: Colors.primary,
     fontWeight: '500',
+  },
+
+  productDetailsSection: {
+    marginBottom: Spacing.base,
+  },
+  productSectionTitle: {
+    fontSize: Typography.size.base,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  productSectionSubtitle: {
+    fontSize: Typography.size.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+    marginBottom: Spacing.sm,
+  },
+  inputLabel: {
+    fontSize: Typography.size.xs,
+    color: Colors.textSecondary,
+    marginBottom: 6,
+    marginTop: Spacing.xs,
+    fontWeight: '600',
+  },
+  segmentWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  segmentChip: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceVariant,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+  },
+  segmentChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySurface,
+  },
+  segmentChipText: {
+    fontSize: Typography.size.xs,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  segmentChipTextActive: {
+    color: Colors.primary,
+  },
+  sheetInput: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.white,
+    color: Colors.textPrimary,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    fontSize: Typography.size.sm,
+    marginBottom: Spacing.sm,
+  },
+  sheetInputMultiline: {
+    minHeight: 80,
   },
 
   proceedBtn: {

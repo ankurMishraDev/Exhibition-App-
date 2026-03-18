@@ -15,8 +15,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { loginWithEmail } from '@/lib/services/authService';
+import { loginWithEmail, loginWithGoogleCredential } from '@/lib/services/authService';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -24,6 +28,24 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+
+  React.useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        setLoading(true);
+        loginWithGoogleCredential(id_token).catch((err: any) => {
+          Alert.alert('Google Sign-In Error', err?.message || 'Failed to sign in with Google');
+        }).finally(() => {
+          setLoading(false);
+        });
+      }
+    }
+  }, [response]);
 
   async function handleLogin() {
     if (!email.trim() || !password) {
@@ -165,7 +187,7 @@ export default function LoginScreen() {
             <View style={styles.socialRow}>
               <TouchableOpacity
                 style={styles.socialBtn}
-                onPress={() => handleSocialPlaceholder('Google')}
+                disabled={!request} onPress={() => promptAsync()}
               >
                 <Ionicons name="logo-google" size={22} color="#EA4335" />
               </TouchableOpacity>
@@ -375,3 +397,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

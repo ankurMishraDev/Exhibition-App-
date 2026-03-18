@@ -12,16 +12,31 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { BookingModel, BookingStatus } from '@/lib/models/booking.model';
-import { ExhibitorModel } from '@/lib/models/exhibitor.model';
+import { ExhibitorModel, ProductDetailsModel } from '@/lib/models/exhibitor.model';
 import { StallModel } from '@/lib/models/stall.model';
 import { HallModel } from '@/lib/models/hall.model';
+
+type BookingProductDetails = Pick<
+  ProductDetailsModel,
+  'segments' | 'categories'
+> & {
+  machineryDescription?: string;
+  rawMaterialDescription?: string;
+};
+
+function timestampToMillis(value: unknown): number {
+  if (!value || typeof value !== 'object') return 0;
+  const withToMillis = value as { toMillis?: () => number };
+  return typeof withToMillis.toMillis === 'function' ? withToMillis.toMillis() : 0;
+}
 
 export async function createBooking(params: {
   stall: StallModel;
   hall: HallModel;
   exhibitor: ExhibitorModel;
+  productDetails?: BookingProductDetails;
 }): Promise<string> {
-  const { stall, hall, exhibitor } = params;
+  const { stall, hall, exhibitor, productDetails } = params;
 
   const bookingRef = doc(collection(db, 'bookings'));
   const stallRef = doc(db, 'stalls', stall.id);
@@ -48,13 +63,29 @@ export async function createBooking(params: {
       bookingDate: now,
       status: 'pending_approval',
       totalAmount: stall.totalPrice,
-      exhibitorSnapshot: exhibitor as any,
-      productDetails: exhibitor.productDetails
+      exhibitorSnapshot: {
+        id: exhibitor.id,
+        userId: exhibitor.userId,
+        contactPrefix: exhibitor.contactPrefix,
+        contactPerson: exhibitor.contactPerson,
+        companyName: exhibitor.companyName,
+        email: exhibitor.email,
+        mobile: exhibitor.mobile,
+        city: exhibitor.city,
+        state: exhibitor.state,
+        country: exhibitor.country,
+      },
+      productDetails: productDetails
+        ? {
+            segments: productDetails.segments,
+            categories: productDetails.categories,
+           
+          }
+        : exhibitor.productDetails
         ? {
             segments: exhibitor.productDetails.segments,
             categories: exhibitor.productDetails.categories,
-            machineryDescription: exhibitor.productDetails.machineryDescription,
-            rawMaterialDescription: exhibitor.productDetails.rawMaterialDescription,
+           
           }
         : undefined,
       createdAt: now,
@@ -78,6 +109,12 @@ export async function getBookingById(id: string): Promise<BookingModel | null> {
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as BookingModel) : null;
 }
 
+export async function getAllBookings(): Promise<BookingModel[]> {
+  const snap = await getDocs(collection(db, 'bookings'));
+  const bookings = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as BookingModel));
+  return bookings.sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt));
+}
+
 export async function getExhibitorBookings(exhibitorId: string): Promise<BookingModel[]> {
   const q = query(
     collection(db, 'bookings'),
@@ -86,8 +123,8 @@ export async function getExhibitorBookings(exhibitorId: string): Promise<Booking
   const snap = await getDocs(q);
   const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
   return bookings.sort((a, b) => {
-    const timeA = (a.createdAt as any)?.toMillis?.() || 0;
-    const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+    const timeA = timestampToMillis(a.createdAt);
+    const timeB = timestampToMillis(b.createdAt);
     return timeB - timeA;
   });
 }
@@ -103,8 +140,8 @@ export function subscribeToExhibitorBookings(
   return onSnapshot(q, (snap) => {
     const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BookingModel));
     callback(bookings.sort((a, b) => {
-      const timeA = (a.createdAt as any)?.toMillis?.() || 0;
-      const timeB = (b.createdAt as any)?.toMillis?.() || 0;
+      const timeA = timestampToMillis(a.createdAt);
+      const timeB = timestampToMillis(b.createdAt);
       return timeB - timeA;
     }));
   });

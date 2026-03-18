@@ -90,8 +90,8 @@ export default function ProfileScreen() {
         {/* Header Banner */}
         <View style={styles.headerBanner}>
           <View style={styles.avatarWrap}>
-            {exhibitor?.logoUrl ? (
-              <Image source={{ uri: exhibitor.logoUrl }} style={styles.avatar} />
+            {exhibitor?.profileImage ? (
+              <Image source={{ uri: exhibitor.profileImage }} style={styles.avatar} />
             ) : (
               <View style={styles.avatarPlaceholder}>
                 <Text style={styles.avatarInitial}>
@@ -107,7 +107,7 @@ export default function ProfileScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/exhibitor-details',
-                    params: {},
+                    params: { bookingContext: 'profile-update' },
                   })
                 }
               >
@@ -180,7 +180,12 @@ export default function ProfileScreen() {
               icon="person-outline"
               label="Edit Exhibitor Profile"
               sub="Update company details and contact info"
-              onPress={() => router.push({ pathname: '/exhibitor-details', params: {} })}
+              onPress={() =>
+                router.push({
+                  pathname: '/exhibitor-details',
+                  params: { bookingContext: 'profile-update' },
+                })
+              }
             />
           )}
 
@@ -212,13 +217,13 @@ export default function ProfileScreen() {
           <MenuItem
             icon="document-text-outline"
             label="Terms & Conditions"
-            onPress={() => {/* future */ Alert.alert('Terms', 'Terms & Conditions will be available soon.')}}
+            onPress={() => router.push('/terms-conditions')}
           />
 
           <MenuItem
             icon="shield-checkmark-outline"
             label="Privacy Policy"
-            onPress={() => Alert.alert('Privacy', 'Privacy Policy will be available soon.')}
+            onPress={() => router.push('/privacy-policy')}
           />
 
           <MenuItem

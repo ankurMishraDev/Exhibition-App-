@@ -32,6 +32,7 @@ export default function PaymentsPage() {
   // Record payment modal
   const [recordTarget, setRecordTarget] = useState<PaymentRow | null>(null);
   const [amount, setAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
   const [method, setMethod] = useState('NEFT');
   const [reference, setReference] = useState('');
   const [payNotes, setPayNotes] = useState('');
@@ -87,6 +88,7 @@ export default function PaymentsPage() {
     const remaining = row.payment ? row.payment.remainingAmount : row.booking.totalAmount || 0;
     setRecordTarget(row);
     setAmount(String(remaining));
+    setPaymentDate(new Date().toISOString().slice(0, 10));
     setMethod('NEFT');
     setReference('');
     setPayNotes('');
@@ -121,6 +123,9 @@ export default function PaymentsPage() {
     if (!recordTarget) return;
     const num = parseFloat(amount);
     if (!num || num <= 0) { toast.error('Enter a valid amount'); return; }
+    if (!paymentDate) { toast.error('Select payment date'); return; }
+    const selectedDate = new Date(`${paymentDate}T00:00:00`);
+    if (Number.isNaN(selectedDate.getTime())) { toast.error('Invalid payment date'); return; }
     setSaving(true);
     try {
       const { booking, payment } = recordTarget;
@@ -128,12 +133,12 @@ export default function PaymentsPage() {
       const record: PaymentRecord = {
         amount: num,
         method,
-        date: Timestamp.now(),
-        reference: reference.trim() || undefined,
-        notes: payNotes.trim() || undefined,
-        screenshotUrl,
+        date: Timestamp.fromDate(selectedDate),
         recordedBy: 'Admin',
       };
+      if (reference.trim()) record.reference = reference.trim();
+      if (payNotes.trim()) record.notes = payNotes.trim();
+      if (screenshotUrl) record.screenshotUrl = screenshotUrl;
 
       let updatedPayment: Payment;
       if (!payment) {
@@ -180,7 +185,10 @@ export default function PaymentsPage() {
       );
       toast.success('Payment recorded');
       setRecordTarget(null);
-    } catch { toast.error('Failed to record payment'); }
+    } catch (e) {
+      console.error("Payment error:", e);
+      toast.error('Failed to record payment');
+    }
     finally { setSaving(false); }
   }
 
@@ -304,6 +312,9 @@ export default function PaymentsPage() {
           <FormGroup label="Amount (₹)" required>
             <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" style={inputStyle} placeholder="Enter amount" autoFocus />
           </FormGroup>
+          <FormGroup label="Payment Date" required>
+            <input value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} type="date" style={inputStyle} />
+          </FormGroup>
           <FormGroup label="Payment Method">
             <select value={method} title='Payment Options' onChange={(e) => setMethod(e.target.value)} style={inputStyle}>
               {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
@@ -366,7 +377,7 @@ export default function PaymentsPage() {
                   <span style={{ fontWeight: 800, fontSize: 15, color: '#1A1A2E' }}>{formatCurrency(r.amount)}</span>
                   <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, background: '#E6F4F4', color: '#0D4F4F', padding: '2px 8px', borderRadius: 100 }}>{r.method}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{formatDate(r.recordedBy)}</div>
+                <div style={{ fontSize: 12, color: '#9CA3AF' }}>{formatDate(r.date)}</div>
               </div>
               {r.reference && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Ref: {r.reference}</div>}
               {r.notes && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>{r.notes}</div>}

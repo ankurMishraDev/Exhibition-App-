@@ -23,7 +23,11 @@ import { ExhibitorModel } from '@/lib/models/exhibitor.model';
 
 export default function BookingCheckoutScreen() {
   const router = useRouter();
-  const { stallId, hallId } = useLocalSearchParams<{ stallId: string; hallId: string }>();
+  const { stallId, hallId, productDetails } = useLocalSearchParams<{
+    stallId: string;
+    hallId: string;
+    productDetails?: string;
+  }>();
   const { user, userModel } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -33,6 +37,22 @@ export default function BookingCheckoutScreen() {
   const [stall, setStall] = useState<StallModel | null>(null);
   const [hall, setHall] = useState<HallModel | null>(null);
   const [exhibitor, setExhibitor] = useState<ExhibitorModel | null>(null);
+
+  const bookingProductDetails = React.useMemo(() => {
+    if (!productDetails) return null;
+    try {
+      const parsed = JSON.parse(productDetails);
+      if (!parsed || typeof parsed !== 'object') return null;
+      return {
+        segments: Array.isArray(parsed.segments) ? parsed.segments.filter((item: unknown) => typeof item === 'string') : [],
+        categories: Array.isArray(parsed.categories) ? parsed.categories.filter((item: unknown) => typeof item === 'string') : [],
+        machineryDescription: typeof parsed.machineryDescription === 'string' ? parsed.machineryDescription : undefined,
+        rawMaterialDescription: typeof parsed.rawMaterialDescription === 'string' ? parsed.rawMaterialDescription : undefined,
+      };
+    } catch {
+      return null;
+    }
+  }, [productDetails]);
 
   useEffect(() => {
     if (!user || !stallId || !hallId) return;
@@ -67,10 +87,16 @@ export default function BookingCheckoutScreen() {
           onPress: async () => {
             setSubmitting(true);
             try {
-              await createBooking({ stall, hall, exhibitor });
+              await createBooking({
+                stall,
+                hall,
+                exhibitor,
+                productDetails: bookingProductDetails ?? undefined,
+              });
               setSubmitted(true);
-            } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Booking submission failed. Please try again.');
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : 'Booking submission failed. Please try again.';
+              Alert.alert('Error', message);
             } finally {
               setSubmitting(false);
             }
@@ -227,7 +253,12 @@ export default function BookingCheckoutScreen() {
                   onPress={() =>
                     router.push({
                       pathname: '/exhibitor-details',
-                      params: { stallId, hallId },
+                      params: {
+                        stallId,
+                        hallId,
+                        bookingContext: 'stall-booking',
+                        productDetails: productDetails || '',
+                      },
                     })
                   }
                 >
@@ -266,7 +297,14 @@ export default function BookingCheckoutScreen() {
             <Ionicons name="shield-checkmark-outline" size={18} color={Colors.textMuted} />
             <Text style={styles.termsText}>
               By submitting this booking request, you agree to the{' '}
-              <Text style={styles.termsLink}>Terms & Conditions</Text> and acknowledge that
+              <Text style={styles.termsLink} onPress={() => router.push('/terms-conditions')}>
+                Terms & Conditions
+              </Text>{' '}
+              and{' '}
+              <Text style={styles.termsLink} onPress={() => router.push('/privacy-policy')}>
+                Privacy Policy
+              </Text>{' '}
+              and acknowledge that
               the stall booking is subject to admin approval.
             </Text>
           </View>

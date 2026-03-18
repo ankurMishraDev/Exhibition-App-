@@ -36,8 +36,6 @@ export interface ProductDetailsModel {
   exhibitorId: string;
   segments: string[];
   categories: string[];         // Array of category strings
-  machineryDescription: string;
-  rawMaterialDescription: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { subscribeToExhibitorBookings } from '@/lib/services/bookingService';
 import { subscribeToExhibitorPayments } from '@/lib/services/paymentService';
 import { BookingModel, BookingStatus } from '@/lib/models/booking.model';
-import { PaymentModel } from '@/lib/models/payment.model';
+import { PaymentModel, PaymentRecord } from '@/lib/models/payment.model';
 
 const STATUS_FILTERS: { label: string; value: BookingStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
@@ -33,6 +33,20 @@ const Colors = {
   bgDark: '#1a0412',
   textHeader: '#FFF9FB',
 };
+
+type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function formatDateValue(value: unknown): string {
+  if (!value || typeof value !== 'object') return 'N/A';
+  const withToDate = value as { toDate?: () => Date };
+  const dateObj = typeof withToDate.toDate === 'function' ? withToDate.toDate() : null;
+  if (!dateObj || Number.isNaN(dateObj.getTime())) return 'N/A';
+  return dateObj.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 export default function BookingsScreen() {
   const router = useRouter();
@@ -62,6 +76,11 @@ export default function BookingsScreen() {
   }, [user, isVisitor]);
 
   const filtered = filter === 'all' ? bookings : bookings.filter((b) => b.status === filter);
+  const paymentsByBooking = React.useMemo(() => {
+    const map = new Map<string, PaymentModel>();
+    payments.forEach((payment) => map.set(payment.bookingId, payment));
+    return map;
+  }, [payments]);
 
   // Aggregates
   const totalStalls = bookings.filter(b => b.status === 'approved' || b.status === 'pending_approval').length;
@@ -177,7 +196,11 @@ export default function BookingsScreen() {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             renderItem={({ item }) => (
-              <BookingCard booking={item} onPress={() => router.push(`/booking-receipt?id=${item.id}`)} />
+              <BookingCard
+                booking={item}
+                payment={paymentsByBooking.get(item.id) ?? null}
+                onPress={() => router.push(`/booking-receipt?id=${item.id}`)}
+              />
             )}
           />
         )}
@@ -188,10 +211,20 @@ export default function BookingsScreen() {
 
 // ─── BookingCard ──────────────────────────────────────────────────────────────
 
-function BookingCard({ booking, onPress }: { booking: BookingModel; onPress: () => void; }) {
+function BookingCard({
+  booking,
+  payment,
+  onPress,
+}: {
+  booking: BookingModel;
+  payment: PaymentModel | null;
+  onPress: () => void;
+}) {
+  const [showPayments, setShowPayments] = useState(false);
   const { color, icon, label } = getStatusStyle(booking.status);
-  const dateObj = (booking.createdAt as any)?.toDate ? (booking.createdAt as any).toDate() : new Date(booking.createdAt as any);
-  const date = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const date = formatDateValue(booking.createdAt);
+  const paymentRecords = payment?.paymentRecords ?? [];
+  const displayedRecords = showPayments ? paymentRecords : paymentRecords.slice(0, 2);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.9}>
@@ -204,7 +237,7 @@ function BookingCard({ booking, onPress }: { booking: BookingModel; onPress: () 
           <Text style={styles.hallName}>{booking.hallName || 'Exhibition Hall'}</Text>
         </View>
         <View style={[styles.statusPill, { backgroundColor: `${color}15` }]}>
-          <Ionicons name={icon as any} size={14} color={color} />
+          <Ionicons name={icon} size={14} color={color} />
           <Text style={[styles.statusText, { color }]}>{label}</Text>
         </View>
       </View>
@@ -220,6 +253,35 @@ function BookingCard({ booking, onPress }: { booking: BookingModel; onPress: () 
         </View>
       </View>
 
+      {payment && (
+        <View style={styles.paymentBox}>
+          <View style={styles.paymentHeaderRow}>
+            <Text style={styles.paymentHeaderTitle}>Payment History</Text>
+            <Text style={styles.paymentHeaderMeta}>
+              Paid ₹{(payment.paidAmount || 0).toLocaleString('en-IN')} / ₹{(payment.totalAmount || 0).toLocaleString('en-IN')}
+            </Text>
+          </View>
+          {displayedRecords.length === 0 ? (
+            <Text style={styles.emptyPaymentText}>No received payment entries yet.</Text>
+          ) : (
+            displayedRecords.map((record, index) => (
+              <PaymentRecordRow
+                key={`${booking.id}-${index}`}
+                record={record}
+                stallCode={booking.stallCode}
+              />
+            ))
+          )}
+          {paymentRecords.length > 2 && (
+            <TouchableOpacity onPress={() => setShowPayments((value) => !value)} style={styles.togglePaymentBtn}>
+              <Text style={styles.togglePaymentBtnText}>
+                {showPayments ? 'Show Less' : `Show All (${paymentRecords.length})`}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       <View style={styles.cardFooter}>
         <Text style={styles.viewReceiptText}>View Full Receipt</Text>
         <Ionicons name="chevron-forward" size={16} color={Colors.magenta} />
@@ -228,9 +290,25 @@ function BookingCard({ booking, onPress }: { booking: BookingModel; onPress: () 
   );
 }
 
+function PaymentRecordRow({ record, stallCode }: { record: PaymentRecord; stallCode: string }) {
+  const transactionId = record.transactionId || record.reference || 'N/A';
+  const paymentDate = formatDateValue(record.date || record.addedAt);
+  return (
+    <View style={styles.paymentRecordRow}>
+      <View style={styles.paymentRecordTop}>
+        <Text style={styles.paymentAmount}>₹{(record.amount || 0).toLocaleString('en-IN')}</Text>
+        <Text style={styles.paymentMethod}>{record.method || 'Unknown'}</Text>
+      </View>
+      <Text style={styles.paymentRecordMeta}>Date: {paymentDate}</Text>
+      <Text style={styles.paymentRecordMeta}>Stall ID: {stallCode}</Text>
+      <Text style={styles.paymentRecordMeta}>Transaction ID: {transactionId}</Text>
+    </View>
+  );
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getStatusStyle(status: BookingStatus) {
+function getStatusStyle(status: BookingStatus): { color: string; icon: IoniconName; label: string } {
   switch (status) {
     case 'pending_approval':
       return { color: '#F59E0B', icon: 'time', label: 'Pending' };
@@ -454,6 +532,81 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: Colors.magenta,
+  },
+
+  paymentBox: {
+    backgroundColor: '#FDF2F8',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#FBCFE8',
+  },
+  paymentHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  paymentHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#831843',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  paymentHeaderMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.magenta,
+  },
+  emptyPaymentText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  paymentRecordRow: {
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#F5D0FE',
+    padding: 10,
+    marginBottom: 8,
+  },
+  paymentRecordTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  paymentAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#4C1D95',
+  },
+  paymentMethod: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0F766E',
+    textTransform: 'uppercase',
+  },
+  paymentRecordMeta: {
+    fontSize: 12,
+    color: '#475569',
+    marginTop: 2,
+  },
+  togglePaymentBtn: {
+    alignSelf: 'center',
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FCE7F3',
+  },
+  togglePaymentBtnText: {
+    fontSize: 11,
+    color: Colors.magenta,
+    fontWeight: '700',
   },
 
   cardFooter: {

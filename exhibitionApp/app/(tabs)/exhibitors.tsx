@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,28 +8,85 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { getAllExhibitors } from '@/lib/services/exhibitorService';
+import { getAllBookings } from '@/lib/services/bookingService';
 import { ExhibitorModel } from '@/lib/models/exhibitor.model';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BookingModel } from '@/lib/models/booking.model';
+
+type FilterKind = 'hall' | 'segment' | 'country' | 'category';
+
+type EnrichedExhibitor = ExhibitorModel & {
+  hallName: string;
+  segmentName: string;
+  categoryName: string;
+};
+
+const ALL_FILTER = 'All';
+
+function toMillis(value: unknown): number {
+  if (!value || typeof value !== 'object') return 0;
+  const withToMillis = value as { toMillis?: () => number };
+  return typeof withToMillis.toMillis === 'function' ? withToMillis.toMillis() : 0;
+}
 
 export default function ExhibitorsListScreen() {
   const router = useRouter();
-  const [exhibitors, setExhibitors] = useState<ExhibitorModel[]>([]);
-  const [filtered, setFiltered] = useState<ExhibitorModel[]>([]);
+  const [exhibitors, setExhibitors] = useState<EnrichedExhibitor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterKind | null>(null);
+  const [hallFilter, setHallFilter] = useState(ALL_FILTER);
+  const [segmentFilter, setSegmentFilter] = useState(ALL_FILTER);
+  const [countryFilter, setCountryFilter] = useState(ALL_FILTER);
+  const [categoryFilter, setCategoryFilter] = useState(ALL_FILTER);
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await getAllExhibitors();
-        setExhibitors(data);
-        setFiltered(data);
+        const [exhibitorData, allBookings] = await Promise.all([
+          getAllExhibitors(),
+          getAllBookings(),
+        ]);
+
+        const bookingsByExhibitor = new Map<string, BookingModel[]>();
+        allBookings.forEach((booking) => {
+          const list = bookingsByExhibitor.get(booking.exhibitorId) ?? [];
+          list.push(booking);
+          bookingsByExhibitor.set(booking.exhibitorId, list);
+        });
+
+        const enrichedData = exhibitorData.map((exhibitor) => {
+          const exhibitorBookings = bookingsByExhibitor.get(exhibitor.id) ?? [];
+          const latestBooking = exhibitorBookings
+            .slice()
+            .sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt))[0];
+
+          const bookingCategories = Array.isArray(latestBooking?.productDetails?.categories)
+            ? latestBooking?.productDetails?.categories
+            : [];
+          const bookingSegments = Array.isArray(latestBooking?.productDetails?.segments)
+            ? latestBooking?.productDetails?.segments
+            : [];
+
+          const exhibitorSegments = exhibitor.productDetails?.segments ?? [];
+          const exhibitorCategories = exhibitor.productDetails?.categories ?? [];
+
+          return {
+            ...exhibitor,
+            hallName: latestBooking?.hallName || 'No Hall Assigned',
+            segmentName: bookingSegments[0] || exhibitorSegments[0] || 'General',
+            categoryName: bookingCategories[0] || exhibitorCategories[0] || 'Uncategorized',
+          };
+        });
+
+        setExhibitors(enrichedData);
       } catch (err) {
         console.error(err);
       } finally {
@@ -38,63 +95,77 @@ export default function ExhibitorsListScreen() {
     })();
   }, []);
 
-  const handleSearch = (text: string) => {
-    setSearch(text);
-    if (!text.trim()) {
-      setFiltered(exhibitors);
-      return;
-    }
-    const q = text.toLowerCase();
-    setFiltered(
-      exhibitors.filter(
-        (e) =>
-          e.companyName?.toLowerCase().includes(q) ||
-          e.city?.toLowerCase().includes(q) ||
-          (e.productDetails?.segments || []).some(s => s.toLowerCase().includes(q))
-      )
-    );
-  };
+  const hallOptions = useMemo(
+    () => [ALL_FILTER, ...new Set(exhibitors.map((item) => item.hallName).filter(Boolean))],
+    [exhibitors],
+  );
+  const segmentOptions = useMemo(
+    () => [ALL_FILTER, ...new Set(exhibitors.map((item) => item.segmentName).filter(Boolean))],
+    [exhibitors],
+  );
+  const countryOptions = useMemo(
+    () => [ALL_FILTER, ...new Set(exhibitors.map((item) => item.country).filter(Boolean))],
+    [exhibitors],
+  );
+  const categoryOptions = useMemo(
+    () => [ALL_FILTER, ...new Set(exhibitors.map((item) => item.categoryName).filter(Boolean))],
+    [exhibitors],
+  );
 
-  const renderItem = ({ item }: { item: ExhibitorModel }) => {
-    // Determine category based on segments or default
-    const category = item.productDetails?.segments?.[0] || 'Plastics';
-    // Use stall placeholder or city
-    const locationStr = [item.city, item.state].filter(Boolean).join(', ') || 'Location TBD';
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return exhibitors.filter((item) => {
+      if (hallFilter !== ALL_FILTER && item.hallName !== hallFilter) return false;
+      if (segmentFilter !== ALL_FILTER && item.segmentName !== segmentFilter) return false;
+      if (countryFilter !== ALL_FILTER && item.country !== countryFilter) return false;
+      if (categoryFilter !== ALL_FILTER && item.categoryName !== categoryFilter) return false;
+      if (!query) return true;
+      return (
+        item.companyName?.toLowerCase().includes(query) ||
+        item.city?.toLowerCase().includes(query) ||
+        item.hallName.toLowerCase().includes(query) ||
+        item.segmentName.toLowerCase().includes(query) ||
+        item.categoryName.toLowerCase().includes(query)
+      );
+    });
+  }, [categoryFilter, countryFilter, exhibitors, hallFilter, search, segmentFilter]);
 
+  const renderItem = ({ item }: { item: EnrichedExhibitor }) => {
+    const locationStr = [item.city, item.state, item.country].filter(Boolean).join(', ') || 'Location TBD';
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.card}
         activeOpacity={0.7}
-        onPress={() => router.push(`/exhibitor/${item.id}` as any)}
+        onPress={() => router.push(`/exhibitor/${item.id}`)}
       >
         <View style={styles.cardContent}>
           <View style={styles.logoContainer}>
-            {item.profileImage ? (
-              <Image source={{ uri: item.profileImage }} style={styles.logo} />
-            ) : item.logoUrl ? (
+            {item.logoUrl ? (
               <Image source={{ uri: item.logoUrl }} style={styles.logo} />
             ) : (
               <Image source={require('../../assets/images/logo.png')} style={styles.logo} />
             )}
           </View>
-          
+
           <View style={styles.infoContainer}>
             <Text style={styles.companyName} numberOfLines={1}>{item.companyName}</Text>
             <View style={styles.tagsContainer}>
               <View style={styles.categoryPill}>
-                <Text style={styles.categoryText}>{category}</Text>
+                <Text style={styles.categoryText}>{item.segmentName}</Text>
+              </View>
+              <View style={styles.hallPill}>
+                <Text style={styles.hallPillText}>{item.hallName}</Text>
               </View>
               <View style={styles.locationContainer}>
                 <Ionicons name="location-outline" size={12} color={Colors.textSecondary} />
                 <Text style={styles.locationText} numberOfLines={1}>{locationStr}</Text>
               </View>
-              {/* Hall Placeholder */}
-              <View style={[styles.categoryPill, {backgroundColor: Colors.saffronLight}]}>
-                <Text style={[styles.categoryText, {color: Colors.saffron}]}>Hall TBD</Text>
+              <View style={[styles.categoryPill, styles.secondaryPill]}>
+                <Text style={[styles.categoryText, styles.secondaryPillText]}>{item.categoryName}</Text>
               </View>
             </View>
           </View>
-          
+
           <Ionicons name="chevron-forward" size={20} color={Colors.primary} style={styles.arrow} />
         </View>
       </TouchableOpacity>
@@ -103,36 +174,41 @@ export default function ExhibitorsListScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Exhibitors</Text>
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Ionicons name="search" size={20} color={Colors.textMuted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search companies..."
+            placeholder="Search companies, halls, segments..."
             placeholderTextColor={Colors.textMuted}
             value={search}
-            onChangeText={handleSearch}
+            onChangeText={setSearch}
           />
         </View>
-        <TouchableOpacity style={styles.filterBtn}>
-          <Ionicons name="options-outline" size={20} color={Colors.white} />
-        </TouchableOpacity>
       </View>
 
-      {/* List */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterRow}
+      >
+        <FilterButton label={`Hall: ${hallFilter}`} onPress={() => setActiveFilter('hall')} />
+        <FilterButton label={`Segment: ${segmentFilter}`} onPress={() => setActiveFilter('segment')} />
+        <FilterButton label={`Country: ${countryFilter}`} onPress={() => setActiveFilter('country')} />
+        <FilterButton label={`Category: ${categoryFilter}`} onPress={() => setActiveFilter('category')} />
+      </ScrollView>
+
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : filtered.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.emptyText}>No exhibitors found</Text>
+          <Text style={styles.emptyText}>No exhibitors found for selected filters</Text>
         </View>
       ) : (
         <FlatList
@@ -143,7 +219,102 @@ export default function ExhibitorsListScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <FilterModal
+        visible={activeFilter === 'hall'}
+        title="Filter by Hall"
+        options={hallOptions}
+        current={hallFilter}
+        onClose={() => setActiveFilter(null)}
+        onSelect={(value) => {
+          setHallFilter(value);
+          setActiveFilter(null);
+        }}
+      />
+      <FilterModal
+        visible={activeFilter === 'segment'}
+        title="Filter by Segment"
+        options={segmentOptions}
+        current={segmentFilter}
+        onClose={() => setActiveFilter(null)}
+        onSelect={(value) => {
+          setSegmentFilter(value);
+          setActiveFilter(null);
+        }}
+      />
+      <FilterModal
+        visible={activeFilter === 'country'}
+        title="Filter by Country"
+        options={countryOptions}
+        current={countryFilter}
+        onClose={() => setActiveFilter(null)}
+        onSelect={(value) => {
+          setCountryFilter(value);
+          setActiveFilter(null);
+        }}
+      />
+      <FilterModal
+        visible={activeFilter === 'category'}
+        title="Filter by Category"
+        options={categoryOptions}
+        current={categoryFilter}
+        onClose={() => setActiveFilter(null)}
+        onSelect={(value) => {
+          setCategoryFilter(value);
+          setActiveFilter(null);
+        }}
+      />
     </SafeAreaView>
+  );
+}
+
+function FilterButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.filterBtn} onPress={onPress}>
+      <Ionicons name="options-outline" size={16} color={Colors.primary} />
+      <Text style={styles.filterBtnText} numberOfLines={1}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function FilterModal({
+  visible,
+  title,
+  options,
+  current,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  title: string;
+  options: string[];
+  current: string;
+  onClose: () => void;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>{title}</Text>
+          <ScrollView style={{ maxHeight: 320 }}>
+            {options.map((option) => {
+              const selected = option === current;
+              return (
+                <TouchableOpacity
+                  key={option}
+                  style={[styles.modalItem, selected && styles.modalItemActive]}
+                  onPress={() => onSelect(option)}
+                >
+                  <Text style={[styles.modalItemText, selected && styles.modalItemTextActive]}>{option}</Text>
+                  {selected && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </TouchableOpacity>
+    </Modal>
   );
 }
 
@@ -165,10 +336,8 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   searchContainer: {
-    flexDirection: 'row',
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.md,
-    gap: Spacing.sm,
   },
   searchInputContainer: {
     flex: 1,
@@ -192,18 +361,33 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.base,
     color: Colors.textPrimary,
   },
+  filterRow: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    gap: Spacing.sm,
+  },
   filterBtn: {
-    width: 48,
-    height: 48,
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.md,
+    height: 38,
+    maxWidth: 220,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySurface,
+    flexDirection: 'row',
+    gap: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    ...Shadow.sm,
+  },
+  filterBtnText: {
+    maxWidth: 180,
+    fontSize: Typography.size.xs,
+    color: Colors.primary,
+    fontWeight: '600',
   },
   listContent: {
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing['3xl'],
+    // paddingBottom: Spacing['3xl'],
   },
   card: {
     backgroundColor: Colors.white,
@@ -267,6 +451,23 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.xs,
     color: Colors.primary,
   },
+  hallPill: {
+    backgroundColor: Colors.saffronLight,
+    borderRadius: 100,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  hallPillText: {
+    fontFamily: Typography.fontFamily.semiBold,
+    fontSize: Typography.size.xs,
+    color: Colors.saffron,
+  },
+  secondaryPill: {
+    backgroundColor: Colors.surfaceVariant,
+  },
+  secondaryPillText: {
+    color: Colors.textSecondary,
+  },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,6 +490,45 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textMuted,
     fontSize: Typography.size.base,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: Spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    ...Shadow.sm,
+  },
+  modalTitle: {
+    fontFamily: Typography.fontFamily.bold,
+    fontSize: Typography.size.base,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  modalItem: {
+    minHeight: 42,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalItemActive: {
+    backgroundColor: Colors.primarySurface,
+  },
+  modalItemText: {
+    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+  },
+  modalItemTextActive: {
+    color: Colors.primary,
+    fontFamily: Typography.fontFamily.semiBold,
   },
 });
  

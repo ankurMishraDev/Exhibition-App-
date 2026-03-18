@@ -48,7 +48,10 @@ function AuthGate() {
   );
 }
 
+import { useKeepAwake } from 'expo-keep-awake';
+
 export default function RootLayout() {
+  useKeepAwake();
   return (
     <AuthProvider>
       <StatusBar style="auto" />

@@ -33,6 +33,11 @@ export default function DashboardLayout({
     }
   }, [user, loading, router]);
 
+  // Close sidebar on route change
+  React.useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
   async function handleLogout() {
     try {
       await logout();
@@ -62,15 +67,77 @@ export default function DashboardLayout({
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F7FA' }}>
+    <div className="admin-layout" style={{ display: 'flex', minHeight: '100vh', background: '#F5F7FA' }}>
+      <style>{`
+        .admin-sidebar {
+          transform: translateX(0);
+          transition: transform 0.3s ease;
+        }
+        .admin-main {
+          margin-left: 256px;
+        }
+        .mobile-header {
+          display: none;
+        }
+        .overlay {
+          display: none;
+        }
+        @media (max-width: 768px) {
+          .admin-sidebar {
+            transform: translateX(-100%);
+          }
+          .admin-sidebar.open {
+            transform: translateX(0);
+          }
+          .admin-main {
+            margin-left: 0;
+            width: 100%;
+          }
+          .mobile-header {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: #0D4F4F;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 40;
+          }
+          .overlay.open {
+            display: block;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 45;
+          }
+        }
+      `}</style>
+
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <button 
+          onClick={() => setSidebarOpen(true)}
+          style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '24px', cursor: 'pointer', marginRight: '1rem' }}
+        >
+          ☰
+        </button>
+        <h1 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Admin Panel</h1>
+      </div>
+
+      {/* Overlay for mobile */}
+      <div 
+        className={`overlay ${sidebarOpen ? 'open' : ''}`} 
+        onClick={() => setSidebarOpen(false)}
+      />
+
       {/* Sidebar */}
       <aside
+        className={`admin-sidebar ${sidebarOpen ? 'open' : ''}`}
         style={{
           width: 256,
           background: '#0D4F4F',
           display: 'flex',
           flexDirection: 'column',
-          flexShrink: 0,
           position: 'fixed',
           top: 0,
           left: 0,
@@ -218,7 +285,7 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content */}
-      <main style={{ marginLeft: 256, flex: 1, minHeight: '100vh', overflow: 'auto' }}>
+      <main className="admin-main" style={{ flex: 1, minHeight: '100vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {children}
       </main>
     </div>

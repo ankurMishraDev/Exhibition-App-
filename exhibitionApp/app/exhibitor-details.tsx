@@ -17,13 +17,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
-import { CONTACT_PREFIXES, PRODUCT_SEGMENTS, COUNTRIES } from '@/constants/segments';
+import { CONTACT_PREFIXES, COUNTRIES } from '@/constants/segments';
 import { useAuth } from '@/hooks/useAuth';
 import {
   getExhibitorByUserId,
   createExhibitorProfile,
   updateExhibitorProfile,
-  saveProductDetails,
   uploadLogo,
   uploadProfileImage,
 } from '@/lib/services/exhibitorService';
@@ -31,8 +30,14 @@ import { ExhibitorModel } from '@/lib/models/exhibitor.model';
 
 export default function ExhibitorDetailsScreen() {
   const router = useRouter();
-  const { stallId, hallId } = useLocalSearchParams<{ stallId: string; hallId: string }>();
+  const { stallId, hallId, bookingContext, productDetails } = useLocalSearchParams<{
+    stallId?: string;
+    hallId?: string;
+    bookingContext?: string;
+    productDetails?: string;
+  }>();
   const { user, userModel } = useAuth();
+  const inBookingFlow = bookingContext === 'stall-booking' && Boolean(stallId) && Boolean(hallId);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,12 +69,6 @@ export default function ExhibitorDetailsScreen() {
   const [tan, setTan] = useState('');
   const [profileImageUri, setProfileImageUri] = useState<string | null>(null);
   const [existingProfileImageUrl, setExistingProfileImageUrl] = useState<string>('');
-
-  // Product details fields
-  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
-  const [categories, setCategories] = useState('');
-  const [machineryDescription, setMachineryDescription] = useState('');
-  const [rawMaterialDescription, setRawMaterialDescription] = useState('');
 
   // UI toggles
   const [showPrefixPicker, setShowPrefixPicker] = useState(false);
@@ -105,13 +104,6 @@ export default function ExhibitorDetailsScreen() {
           setPan(profile.pan || '');
           setTan(profile.tan || '');
           setExistingProfileImageUrl(profile.profileImage || '');
-
-          if (profile.productDetails) {
-            setSelectedSegments(profile.productDetails.segments || []);
-            setCategories(profile.productDetails.categories?.join(', ') || '');
-            setMachineryDescription(profile.productDetails.machineryDescription || '');
-            setRawMaterialDescription(profile.productDetails.rawMaterialDescription || '');
-          }
         }
       } catch {
         // No existing profile — that's fine
@@ -153,12 +145,6 @@ export default function ExhibitorDetailsScreen() {
     if (!result.canceled && result.assets[0]) {
       setProfileImageUri(result.assets[0].uri);
     }
-  }
-
-  function toggleSegment(seg: string) {
-    setSelectedSegments((prev) =>
-      prev.includes(seg) ? prev.filter((s) => s !== seg) : [...prev, seg]
-    );
   }
 
   async function handleSubmit() {
@@ -216,25 +202,27 @@ export default function ExhibitorDetailsScreen() {
         await createExhibitorProfile(profileData);
       }
 
-      // Save product details
-      const exhibitorId = existingProfile?.id || user.uid;
-      await saveProductDetails(exhibitorId, {
-        exhibitorId,
-        segments: selectedSegments,
-        categories: categories
-          .split(',')
-          .map((c) => c.trim())
-          .filter(Boolean),
-        machineryDescription: machineryDescription.trim(),
-        rawMaterialDescription: rawMaterialDescription.trim(),
-      });
-
-      router.push({
-        pathname: '/booking/checkout',
-        params: { stallId, hallId },
-      });
-    } catch (err: any) {
-      Alert.alert('Error', err?.message || 'Could not save details. Please try again.');
+      if (inBookingFlow && stallId && hallId) {
+        router.push({
+          pathname: '/booking/checkout',
+          params: {
+            stallId,
+            hallId,
+            bookingContext: 'stall-booking',
+            productDetails: productDetails || '',
+          },
+        });
+      } else {
+        Alert.alert('Profile Updated', 'Your exhibitor profile has been saved successfully.', [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/(tabs)/profile'),
+          },
+        ]);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Could not save details. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setSaving(false);
     }
@@ -603,65 +591,6 @@ export default function ExhibitorDetailsScreen() {
               autoCapitalize="characters"
             />
 
-          {/* ── Product details ── */}
-          <SectionHeader title="Product Details" icon="cube-outline" />
-            
-            <FormLabel label="Segments involved in" />
-            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md}}>
-              {['Raw Materials', 'Machinery', 'Finished Products', 'Recycling', 'Others'].map((seg) => {
-                const active = selectedSegments.includes(seg);
-                return (
-                  <TouchableOpacity
-                    key={seg}
-                    style={[styles.segment, active && styles.segmentActive]}
-                    onPress={() => toggleSegment(seg)}
-                    activeOpacity={0.8}
-                  >
-                  {active && (
-                    <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
-                  )}
-                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                    {seg}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <FormLabel label="Main Product / Categories" />
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. PET Bottles, HDPE Pipes, Plastic Moulds"
-            placeholderTextColor={Colors.placeholder}
-            value={categories}
-            onChangeText={setCategories}
-          />
-          <Text style={styles.hint}>Separate multiple categories with commas</Text>
-
-          <FormLabel label="Machinery Products Description" />
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            placeholder="Describe any machinery or equipment you will be displaying..."
-            placeholderTextColor={Colors.placeholder}
-            value={machineryDescription}
-            onChangeText={setMachineryDescription}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-
-          <FormLabel label="Raw Materials Description" />
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            placeholder="Describe any raw materials or chemicals you will be displaying..."
-            placeholderTextColor={Colors.placeholder}
-            value={rawMaterialDescription}
-            onChangeText={setRawMaterialDescription}
-            multiline
-            numberOfLines={3}
-            textAlignVertical="top"
-          />
-
           {/* Submit */}
           <TouchableOpacity
             style={[styles.submitBtn, saving && styles.submitBtnDisabled]}
@@ -672,8 +601,10 @@ export default function ExhibitorDetailsScreen() {
               <ActivityIndicator size="small" color={Colors.white} />
             ) : (
               <>
-                <Text style={styles.submitBtnText}>Save & Continue to Booking</Text>
-                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                <Text style={styles.submitBtnText}>
+                  {inBookingFlow ? 'Save & Continue to Booking' : 'Save Profile'}
+                </Text>
+                {inBookingFlow && <Ionicons name="arrow-forward" size={18} color={Colors.white} />}
               </>
             )}
           </TouchableOpacity>
