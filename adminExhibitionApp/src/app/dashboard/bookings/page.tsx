@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   subscribeToAllBookings,
   approveBooking,
@@ -11,6 +11,34 @@ import {
 import { useAuth } from '@/contexts/auth-context';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
+
+type BookingProductDetails = {
+  segments?: unknown;
+  categories?: unknown;
+};
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function getProductDetails(details: unknown): {
+  segments: string[];
+  categories: string[];
+  
+} | null {
+  if (!details || typeof details !== 'object') return null;
+  const source = details as BookingProductDetails;
+  return {
+    segments: toStringArray(source.segments),
+    categories: toStringArray(source.categories),
+  };
+}
+
+function getSnapshotValue(snapshot: unknown, key: string): string | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const value = (snapshot as Record<string, unknown>)[key];
+  return typeof value === 'string' && value.trim() ? value : null;
+}
 
 const FILTERS: { label: string; value: BookingStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
@@ -58,8 +86,9 @@ export default function BookingsPage() {
       await approveBooking(selected.id, selected.stallId, user.email!, approveNotes);
       toast.success(`Booking ${selected.stallCode} approved successfully`);
       setShowModal(false);
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to approve booking');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to approve booking';
+      toast.error(message);
     } finally {
       setActionLoading(false);
     }
@@ -75,8 +104,9 @@ export default function BookingsPage() {
       await rejectBooking(selected.id, selected.stallId, rejectNotes);
       toast.success(`Booking ${selected.stallCode} rejected`);
       setShowModal(false);
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to reject booking');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to reject booking';
+      toast.error(message);
     } finally {
       setActionLoading(false);
     }
@@ -328,6 +358,13 @@ export default function BookingsPage() {
                 <InfoItem label="Company" value={selected.companyName} />
                 <InfoItem label="Exhibitor" value={selected.exhibitorName} />
                 <InfoItem label="Amount" value={formatCurrency(selected.totalAmount)} />
+                {typeof selected.finalAmount === 'number' && (
+                  <InfoItem label="Final Amount" value={formatCurrency(selected.finalAmount)} />
+                )}
+                <InfoItem label="Space Type" value={selected.spaceType || 'N/A'} />
+                <InfoItem label="Preferred Space" value={selected.preferredSpaceType || selected.spaceType || 'N/A'} />
+                {selected.discountCode && <InfoItem label="Discount Code" value={selected.discountCode} />}
+                {selected.discountDecision && <InfoItem label="Discount Status" value={selected.discountDecision} />}
                 <InfoItem label="Status" value={selected.status.replace('_', ' ')} />
                 <InfoItem label="Booked On" value={formatDate(selected.createdAt)} />
                 {selected.adminNotes && (
@@ -335,6 +372,26 @@ export default function BookingsPage() {
                 )}
               </div>
             </div>
+
+            {getProductDetails(selected.productDetails) && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+                  Product Details
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  {(() => {
+                    const details = getProductDetails(selected.productDetails);
+                    if (!details) return null;
+                    return (
+                      <>
+                        {details.segments.length > 0 && <InfoItem label="Segments" value={details.segments.join(', ')} />}
+                        {details.categories.length > 0 && <InfoItem label="Categories" value={details.categories.join(', ')} />}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
 
             {/* Exhibitor snapshot */}
             {selected.exhibitorSnapshot && (
@@ -344,7 +401,7 @@ export default function BookingsPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                   {['mobile', 'email', 'city', 'country'].map((key) => {
-                    const val = (selected.exhibitorSnapshot as any)?.[key];
+                    const val = getSnapshotValue(selected.exhibitorSnapshot, key);
                     return val ? <InfoItem key={key} label={key} value={String(val)} /> : null;
                   })}
                 </div>

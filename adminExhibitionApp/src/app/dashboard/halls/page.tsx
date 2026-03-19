@@ -23,9 +23,9 @@ import { toast } from 'sonner';
 const SPACE_TYPES = ['Bare Space', 'Shell Scheme', '2-Side Open', '3-Side Open'];
 const FEATURES = ['Power', 'WiFi', 'Table', 'Chair', 'Carpet', 'Fascia Board', 'Storage', 'Lighting'];
 
-function calcPricing(length: number, breadth: number) {
+function calcPricing(length: number, breadth: number, ratePerSqm = 7500) {
   const area = length * breadth;
-  const basePrice = area * 7500;
+  const basePrice = area * ratePerSqm;
   const gstAmount = Math.round(basePrice * 0.18);
   return { area, basePrice, gstAmount, totalPrice: basePrice + gstAmount };
 }
@@ -53,6 +53,7 @@ export default function HallsPage() {
   const [stallCode, setStallCode] = useState('');
   const [stallLength, setStallLength] = useState('3');
   const [stallBreadth, setStallBreadth] = useState('3');
+  const [stallRatePerSqm, setStallRatePerSqm] = useState('7500');
   const [stallSpaceType, setStallSpaceType] = useState('Shell Scheme');
   const [stallFeatures, setStallFeatures] = useState<string[]>([]);
   const [stallRow, setStallRow] = useState('');
@@ -66,6 +67,7 @@ export default function HallsPage() {
   const [bulkEnd, setBulkEnd] = useState('10');
   const [bulkLength, setBulkLength] = useState('3');
   const [bulkBreadth, setBulkBreadth] = useState('3');
+  const [bulkRatePerSqm, setBulkRatePerSqm] = useState('7500');
   const [bulkSpaceType, setBulkSpaceType] = useState('Shell Scheme');
   const [bulkSaving, setBulkSaving] = useState(false);
 
@@ -164,6 +166,7 @@ export default function HallsPage() {
     setEditingStall(null);
     setStallCode('');
     setStallLength('3'); setStallBreadth('3');
+    setStallRatePerSqm('7500');
     setStallSpaceType('Shell Scheme'); setStallFeatures([]); setStallRow(''); setStallCol('');
     setShowStallForm(true);
   }
@@ -172,6 +175,7 @@ export default function HallsPage() {
     setEditingStall(stall);
     setStallCode(stall.stallCode);
     setStallLength(String(stall.length)); setStallBreadth(String(stall.breadth));
+    setStallRatePerSqm(String(stall.ratePerSqm ?? (Math.round(stall.basePrice / Math.max(stall.area, 1)) || 7500)));
     setStallSpaceType(stall.spaceType);
     setStallFeatures(stall.features); setStallRow(String(stall.row ?? ''));
     setStallCol(String(stall.col ?? ''));
@@ -184,11 +188,13 @@ export default function HallsPage() {
     try {
       const l = parseFloat(stallLength) || 3;
       const b = parseFloat(stallBreadth) || 3;
-      const pricing = calcPricing(l, b);
+      const rate = parseFloat(stallRatePerSqm) || 7500;
+      const pricing = calcPricing(l, b, rate);
       const data: Omit<Stall, 'id' | 'createdAt' | 'updatedAt'> = {
         stallCode: stallCode.trim().toUpperCase(),
         hallId: selectedHall.id,
         hallName: selectedHall.hallName,
+        ratePerSqm: rate,
         length: l, breadth: b, ...pricing,
         status: editingStall?.status ?? 'available',
         exhibitorId: editingStall?.exhibitorId ?? null,
@@ -233,10 +239,12 @@ export default function HallsPage() {
         const code = `${bulkPrefix.trim().toUpperCase()}-${i}`;
         const l = parseFloat(bulkLength) || 3;
         const b = parseFloat(bulkBreadth) || 3;
-        const pricing = calcPricing(l, b);
+        const rate = parseFloat(bulkRatePerSqm) || 7500;
+        const pricing = calcPricing(l, b, rate);
         const data: Omit<Stall, 'id' | 'createdAt' | 'updatedAt'> = {
           stallCode: code, hallId: selectedHall.id,
           hallName: selectedHall.hallName,
+          ratePerSqm: rate,
           length: l, breadth: b, ...pricing,
           status: 'available', exhibitorId: null, bookingId: null,
           spaceType: bulkSpaceType, features: [],
@@ -406,10 +414,11 @@ export default function HallsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <FormGroup label="Length (m)"><input title='Length in meters' value={stallLength} onChange={(e) => setStallLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
             <FormGroup label="Breadth (m)"><input title='Breadth in meters' value={stallBreadth} onChange={(e) => setStallBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Rate Per Sqm (₹)"><input title='Rate per sqm' value={stallRatePerSqm} onChange={(e) => setStallRatePerSqm(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           </div>
           {stallLength && stallBreadth && (
             <div style={{ padding: '8px 12px', background: '#F0FDF4', borderRadius: 8, marginBottom: '1rem', fontSize: 13, color: '#16A34A', fontWeight: 600 }}>
-              Area: {(parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)} sqm · Base: {formatCurrency((parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)*7500)} + 18% GST = {formatCurrency(Math.round((parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)*7500*1.18))}
+              Area: {(parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)} sqm · Rate: {formatCurrency(parseFloat(stallRatePerSqm) || 7500)} / sqm · Base: {formatCurrency((parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)*(parseFloat(stallRatePerSqm) || 7500))} + 18% GST = {formatCurrency(Math.round((parseFloat(stallLength)||0)*(parseFloat(stallBreadth)||0)*(parseFloat(stallRatePerSqm) || 7500)*1.18))}
             </div>
           )}
           <FormGroup label="Space Type">
@@ -445,6 +454,7 @@ export default function HallsPage() {
             <FormGroup label="End Number"><input title='Final number' value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} type="number" style={inputStyle} /></FormGroup>
             <FormGroup label="Length (m)"><input title='Length in meters' value={bulkLength} onChange={(e) => setBulkLength(e.target.value)} type="number" style={inputStyle} /></FormGroup>
             <FormGroup label="Breadth (m)"><input title='Breadth in meters' value={bulkBreadth} onChange={(e) => setBulkBreadth(e.target.value)} type="number" style={inputStyle} /></FormGroup>
+            <FormGroup label="Rate Per Sqm (₹)"><input title='Rate per sqm' value={bulkRatePerSqm} onChange={(e) => setBulkRatePerSqm(e.target.value)} type="number" style={inputStyle} /></FormGroup>
           </div>
           <FormGroup label="Space Type">
             <select title='Space Type' value={bulkSpaceType} onChange={(e) => setBulkSpaceType(e.target.value)} style={inputStyle}>

@@ -23,10 +23,12 @@ import { ExhibitorModel } from '@/lib/models/exhibitor.model';
 
 export default function BookingCheckoutScreen() {
   const router = useRouter();
-  const { stallId, hallId, productDetails } = useLocalSearchParams<{
+  const { stallId, hallId, productDetails, preferredSpaceType, discountCode } = useLocalSearchParams<{
     stallId: string;
     hallId: string;
     productDetails?: string;
+    preferredSpaceType?: string;
+    discountCode?: string;
   }>();
   const { user, userModel } = useAuth();
 
@@ -92,6 +94,13 @@ export default function BookingCheckoutScreen() {
                 hall,
                 exhibitor,
                 productDetails: bookingProductDetails ?? undefined,
+                preferredSpaceType: (preferredSpaceType as
+                  | 'Bare Space'
+                  | 'Shell Scheme'
+                  | '2-Side Open'
+                  | '3-Side Open'
+                  | undefined) ?? stall.spaceType,
+                discountCode: typeof discountCode === 'string' ? discountCode : undefined,
               });
               setSubmitted(true);
             } catch (err: unknown) {
@@ -212,7 +221,7 @@ export default function BookingCheckoutScreen() {
             </View>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Rate</Text>
-              <Text style={styles.priceValue}>₹7,500 / sqm</Text>
+              <Text style={styles.priceValue}>₹{(stall?.ratePerSqm ?? 7500).toLocaleString('en-IN')} / sqm</Text>
             </View>
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Base Amount</Text>
@@ -258,6 +267,8 @@ export default function BookingCheckoutScreen() {
                         hallId,
                         bookingContext: 'stall-booking',
                         productDetails: productDetails || '',
+                        preferredSpaceType: preferredSpaceType || '',
+                        discountCode: discountCode || '',
                       },
                     })
                   }
@@ -276,6 +287,8 @@ export default function BookingCheckoutScreen() {
                 value={`${exhibitor.contactPrefix} ${exhibitor.contactPerson}`}
               />
               <DetailRow label="Mobile" value={exhibitor.mobile} />
+              <DetailRow label="Preferred Space Type" value={preferredSpaceType || stall?.spaceType || '—'} />
+              {discountCode ? <DetailRow label="Discount Code" value={String(discountCode).toUpperCase()} /> : null}
               <DetailRow label="Email" value={exhibitor.email} />
               <DetailRow
                 label="Location"

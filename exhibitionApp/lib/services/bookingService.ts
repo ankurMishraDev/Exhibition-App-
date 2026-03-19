@@ -15,14 +15,13 @@ import { BookingModel, BookingStatus } from '@/lib/models/booking.model';
 import { ExhibitorModel, ProductDetailsModel } from '@/lib/models/exhibitor.model';
 import { StallModel } from '@/lib/models/stall.model';
 import { HallModel } from '@/lib/models/hall.model';
+import { SpaceType } from '@/constants/segments';
+import { DiscountType } from '@/lib/models/discount.model';
 
 type BookingProductDetails = Pick<
   ProductDetailsModel,
   'segments' | 'categories'
-> & {
-  machineryDescription?: string;
-  rawMaterialDescription?: string;
-};
+>;
 
 function timestampToMillis(value: unknown): number {
   if (!value || typeof value !== 'object') return 0;
@@ -30,22 +29,110 @@ function timestampToMillis(value: unknown): number {
   return typeof withToMillis.toMillis === 'function' ? withToMillis.toMillis() : 0;
 }
 
+function calculateDiscount(totalAmount: number, type: DiscountType, value: number): { amount: number; finalAmount: number } {
+  const normalizedTotal = Math.max(0, totalAmount || 0);
+  const normalizedValue = Math.max(0, value || 0);
+  const amount = type === 'percentage'
+    ? Math.min(normalizedTotal, (normalizedTotal * normalizedValue) / 100)
+    : Math.min(normalizedTotal, normalizedValue);
+  return {
+    amount: Math.round(amount),
+    finalAmount: Math.round(Math.max(0, normalizedTotal - amount)),
+  };
+}
+
 export async function createBooking(params: {
   stall: StallModel;
   hall: HallModel;
   exhibitor: ExhibitorModel;
   productDetails?: BookingProductDetails;
+  preferredSpaceType?: SpaceType;
+  discountCode?: string;
 }): Promise<string> {
-  const { stall, hall, exhibitor, productDetails } = params;
+  const { stall, hall, exhibitor, productDetails, preferredSpaceType, discountCode } = params;
 
   const bookingRef = doc(collection(db, 'bookings'));
   const stallRef = doc(db, 'stalls', stall.id);
   const now = serverTimestamp();
+  const normalizedDiscountCode = discountCode?.trim().toUpperCase();
 
   await runTransaction(db, async (txn) => {
     const stallSnap = await txn.get(stallRef);
     if (!stallSnap.exists() || stallSnap.data().status !== 'available') {
       throw new Error('This stall is no longer available. Please select another.');
+    }
+
+    let finalAmount = stall.totalPrice;
+    let discountDecision: 'accepted' | 'rejected' | undefined;
+    let discountApplied:
+      | {
+          discountId?: string;
+          type: DiscountType;
+          value: number;
+          amount: number;
+          finalAmount: number;
+        }
+      | undefined;
+
+    if (normalizedDiscountCode) {
+      const discountRef = doc(db, 'discounts', normalizedDiscountCode);
+      const discountSnap = await txn.get(discountRef);
+
+      if (discountSnap.exists()) {
+        const discount = discountSnap.data() as {
+          code?: string;
+          type?: DiscountType;
+          value?: number;
+          isActive?: boolean;
+          used?: boolean;
+          expiryDate?: string;
+          exhibitorIds?: string[];
+          stallIds?: string[];
+        };
+
+        const isExpired = discount.expiryDate ? new Date(discount.expiryDate) < new Date() : false;
+        const exhibitorAllowed = !discount.exhibitorIds?.length || discount.exhibitorIds.includes(exhibitor.id);
+        const stallAllowed = !discount.stallIds?.length || discount.stallIds.includes(stall.id);
+        const canRedeem = Boolean(
+          discount.isActive &&
+          !discount.used &&
+          !isExpired &&
+          exhibitorAllowed &&
+          stallAllowed &&
+          (discount.type === 'percentage' || discount.type === 'flat') &&
+          typeof discount.value === 'number' &&
+          discount.value > 0,
+        );
+
+        if (canRedeem && discount.type && typeof discount.value === 'number') {
+          const calc = calculateDiscount(stall.totalPrice, discount.type, discount.value);
+          finalAmount = calc.finalAmount;
+          discountDecision = 'accepted';
+          discountApplied = {
+            discountId: discountSnap.id,
+            type: discount.type,
+            value: discount.value,
+            amount: calc.amount,
+            finalAmount: calc.finalAmount,
+          };
+        } else {
+          discountDecision = 'rejected';
+        }
+
+        // A code can be used only once, even if the outcome is rejected.
+        txn.update(discountRef, {
+          used: true,
+          isActive: false,
+          decision: discountDecision,
+          usedByBookingId: bookingRef.id,
+          usedByExhibitorId: exhibitor.id,
+          usedByStallId: stall.id,
+          usedAt: now,
+          updatedAt: now,
+        });
+      } else {
+        discountDecision = 'rejected';
+      }
     }
 
     const booking: Omit<BookingModel, 'id' | 'createdAt' | 'updatedAt' | 'bookingDate'> & {
@@ -61,8 +148,14 @@ export async function createBooking(params: {
       exhibitorName: `${exhibitor.contactPrefix} ${exhibitor.contactPerson}`.trim(),
       companyName: exhibitor.companyName,
       bookingDate: now,
+      spaceType: stall.spaceType,
+      preferredSpaceType: preferredSpaceType ?? stall.spaceType,
       status: 'pending_approval',
       totalAmount: stall.totalPrice,
+      finalAmount,
+      discountCode: normalizedDiscountCode || undefined,
+      discountDecision,
+      discountApplied,
       exhibitorSnapshot: {
         id: exhibitor.id,
         userId: exhibitor.userId,
@@ -79,13 +172,11 @@ export async function createBooking(params: {
         ? {
             segments: productDetails.segments,
             categories: productDetails.categories,
-           
           }
         : exhibitor.productDetails
         ? {
             segments: exhibitor.productDetails.segments,
             categories: exhibitor.productDetails.categories,
-           
           }
         : undefined,
       createdAt: now,

@@ -42,6 +42,7 @@ export default function ExhibitorsListScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKind | null>(null);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [hallFilter, setHallFilter] = useState(ALL_FILTER);
   const [segmentFilter, setSegmentFilter] = useState(ALL_FILTER);
   const [countryFilter, setCountryFilter] = useState(ALL_FILTER);
@@ -122,7 +123,9 @@ export default function ExhibitorsListScreen() {
       if (!query) return true;
       return (
         item.companyName?.toLowerCase().includes(query) ||
+        item.contactPerson?.toLowerCase().includes(query) ||
         item.city?.toLowerCase().includes(query) ||
+        item.country?.toLowerCase().includes(query) ||
         item.hallName.toLowerCase().includes(query) ||
         item.segmentName.toLowerCase().includes(query) ||
         item.categoryName.toLowerCase().includes(query)
@@ -189,36 +192,57 @@ export default function ExhibitorsListScreen() {
             onChangeText={setSearch}
           />
         </View>
+        <TouchableOpacity style={styles.filterMainBtn} onPress={() => setShowFilterMenu(true)}>
+          <Ionicons name="funnel-outline" size={18} color={Colors.white} />
+          <Text style={styles.filterMainBtnText}>Filter Options</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-      >
-        <FilterButton label={`Hall: ${hallFilter}`} onPress={() => setActiveFilter('hall')} />
-        <FilterButton label={`Segment: ${segmentFilter}`} onPress={() => setActiveFilter('segment')} />
-        <FilterButton label={`Country: ${countryFilter}`} onPress={() => setActiveFilter('country')} />
-        <FilterButton label={`Category: ${categoryFilter}`} onPress={() => setActiveFilter('category')} />
-      </ScrollView>
+      <View style={styles.appliedFiltersRow}>
+        <Text style={styles.appliedFiltersText}>Hall: {hallFilter}</Text>
+        <Text style={styles.appliedFiltersText}>Segment: {segmentFilter}</Text>
+      </View>
+      <View style={styles.appliedFiltersRowCompact}>
+        <Text style={styles.appliedFiltersText}>Country: {countryFilter}</Text>
+        <Text style={styles.appliedFiltersText}>Category: {categoryFilter}</Text>
+      </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
-      ) : filtered.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={styles.emptyText}>No exhibitors found for selected filters</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+      <View style={styles.listWrap}>
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : filtered.length === 0 ? (
+          <View style={styles.center}>
+            <Text style={styles.emptyText}>No exhibitors found for selected filters</Text>
+          </View>
+        ) : (
+          <FlatList
+            style={styles.list}
+            data={filtered}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          />
+        )}
+      </View>
+
+      <FilterModal
+        visible={showFilterMenu}
+        title="Choose Filter Type"
+        options={['Hall', 'Segment', 'Country', 'Category']}
+        current=""
+        onClose={() => setShowFilterMenu(false)}
+        onSelect={(value) => {
+          if (value === 'Hall') setActiveFilter('hall');
+          if (value === 'Segment') setActiveFilter('segment');
+          if (value === 'Country') setActiveFilter('country');
+          if (value === 'Category') setActiveFilter('category');
+          setShowFilterMenu(false);
+        }}
+      />
 
       <FilterModal
         visible={activeFilter === 'hall'}
@@ -268,15 +292,6 @@ export default function ExhibitorsListScreen() {
   );
 }
 
-function FilterButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={styles.filterBtn} onPress={onPress}>
-      <Ionicons name="options-outline" size={16} color={Colors.primary} />
-      <Text style={styles.filterBtnText} numberOfLines={1}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 function FilterModal({
   visible,
   title,
@@ -299,7 +314,7 @@ function FilterModal({
           <Text style={styles.modalTitle}>{title}</Text>
           <ScrollView style={{ maxHeight: 320 }}>
             {options.map((option) => {
-              const selected = option === current;
+              const selected = current ? option === current : false;
               return (
                 <TouchableOpacity
                   key={option}
@@ -336,8 +351,10 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   searchContainer: {
+    flexDirection: 'column',
     paddingHorizontal: Spacing.lg,
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.sm,
+    gap: Spacing.sm,
   },
   searchInputContainer: {
     flex: 1,
@@ -361,33 +378,56 @@ const styles = StyleSheet.create({
     fontSize: Typography.size.base,
     color: Colors.textPrimary,
   },
-  filterRow: {
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    gap: Spacing.sm,
-  },
-  filterBtn: {
-    height: 38,
-    maxWidth: 220,
+  filterMainBtn: {
+    height: 44,
+    width: '100%',
     paddingHorizontal: Spacing.md,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primarySurface,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primary,
     flexDirection: 'row',
     gap: 6,
     alignItems: 'center',
     justifyContent: 'center',
+    ...Shadow.sm,
   },
-  filterBtnText: {
-    maxWidth: 180,
-    fontSize: Typography.size.xs,
-    color: Colors.primary,
+  filterMainBtnText: {
+    fontSize: Typography.size.sm,
+    color: Colors.white,
     fontWeight: '600',
+  },
+  appliedFiltersRow: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: 4,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  appliedFiltersRowCompact: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: 2,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  appliedFiltersText: {
+    fontSize: Typography.size.xs,
+    color: Colors.textSecondary,
+    backgroundColor: Colors.surfaceVariant,
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  listWrap: {
+    flex: 1,
+  },
+  list: {
+    flex: 1,
   },
   listContent: {
     paddingHorizontal: Spacing.lg,
-    // paddingBottom: Spacing['3xl'],
+    paddingTop: 0,
+    paddingBottom: Spacing['3xl'],
   },
   card: {
     backgroundColor: Colors.white,

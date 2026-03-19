@@ -4,6 +4,8 @@ import {
   Text,
   TouchableOpacity,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   ScrollView,
   FlatList,
@@ -22,10 +24,14 @@ import { subscribeToHallStalls } from '@/lib/services/stallService';
 import { HallModel } from '@/lib/models/hall.model';
 import { StallModel, StallStatus } from '@/lib/models/stall.model';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
-import { PRODUCT_SEGMENTS } from '@/constants/segments';
+import { PRODUCT_SEGMENTS, SPACE_TYPES } from '@/constants/segments';
 
 const { width, height } = Dimensions.get('window');
 const STALL_SIZE = (width - Spacing.base * 2 - Spacing.sm * 3) / 4;
+
+function isMeaningfulText(input: string): boolean {
+  return /[A-Za-z]/.test(input);
+}
 
 export default function HallSelectionScreen() {
   const router = useRouter();
@@ -39,9 +45,9 @@ export default function HallSelectionScreen() {
   const [showHallMap, setShowHallMap] = useState(false);
   const [showHallDropdown, setShowHallDropdown] = useState(false);
   const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
+  const [preferredSpaceType, setPreferredSpaceType] = useState<string>(SPACE_TYPES[0]);
   const [categories, setCategories] = useState('');
-  const [machineryDescription, setMachineryDescription] = useState('');
-  const [rawMaterialDescription, setRawMaterialDescription] = useState('');
+  const [discountCode, setDiscountCode] = useState('');
   const slideAnim = useRef(new Animated.Value(height)).current;
 
   // Load halls initially
@@ -91,9 +97,9 @@ export default function HallSelectionScreen() {
   function handleStallPress(stall: StallModel) {
     if (stall.status === 'booked') return; // already booked
     setSelectedSegments([]);
+    setPreferredSpaceType(stall.spaceType || SPACE_TYPES[0]);
     setCategories('');
-    setMachineryDescription('');
-    setRawMaterialDescription('');
+    setDiscountCode('');
     setSelectedStall(stall);
     openBottomSheet();
   }
@@ -106,14 +112,38 @@ export default function HallSelectionScreen() {
 
   function handleProceed() {
     if (!selectedStall || !selectedHall) return;
+
+    if (selectedSegments.length === 0) {
+      Alert.alert('Product Segment Required', 'Please select at least one product segment before continuing.');
+      return;
+    }
+
+    if (!categories.trim()) {
+      Alert.alert('Category Required', 'Please add at least one product category before continuing.');
+      return;
+    }
+
+    const categoryList = categories
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (categoryList.length === 0 || !categoryList.every(isMeaningfulText)) {
+      Alert.alert('Invalid Categories', 'Please enter valid text categories separated by commas.');
+      return;
+    }
+
+    const normalizedDiscountCode = discountCode.trim().toUpperCase();
+    if (normalizedDiscountCode && !/^[A-Z0-9_-]{4,30}$/.test(normalizedDiscountCode)) {
+      Alert.alert('Invalid Discount Code', 'Use 4-30 characters with letters, numbers, hyphen or underscore.');
+      return;
+    }
+
+    
+
     const productDetailsPayload = {
       segments: selectedSegments,
-      categories: categories
-        .split(',')
-        .map((value) => value.trim())
-        .filter(Boolean),
-      machineryDescription: machineryDescription.trim(),
-      rawMaterialDescription: rawMaterialDescription.trim(),
+      categories: categoryList,
     };
     closeBottomSheet();
     router.push({
@@ -122,6 +152,8 @@ export default function HallSelectionScreen() {
         stallId: selectedStall.id,
         hallId: selectedHall.id,
         bookingContext: 'stall-booking',
+        preferredSpaceType,
+        discountCode: normalizedDiscountCode,
         productDetails: JSON.stringify(productDetailsPayload),
       },
     });
@@ -258,110 +290,127 @@ export default function HallSelectionScreen() {
           <Animated.View
             style={[styles.bottomSheet, { transform: [{ translateY: slideAnim }] }]}
           >
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <View>
-                <Text style={styles.sheetStallCode}>{selectedStall.stallCode}</Text>
-                <Text style={styles.sheetHall}>{selectedHall?.hallName}</Text>
+            <KeyboardAvoidingView
+              style={{ flex: 1 }}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeader}>
+                <View>
+                  <Text style={styles.sheetStallCode}>{selectedStall.stallCode}</Text>
+                  <Text style={styles.sheetHall}>{selectedHall?.hallName}</Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedStall.status) + '20' }]}>
+                  <Text style={[styles.statusBadgeText, { color: getStatusColor(selectedStall.status) }]}>
+                    {selectedStall.status.charAt(0).toUpperCase() + selectedStall.status.slice(1)}
+                  </Text>
+                </View>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedStall.status) + '20' }]}>
-                <Text style={[styles.statusBadgeText, { color: getStatusColor(selectedStall.status) }]}>
-                  {selectedStall.status.charAt(0).toUpperCase() + selectedStall.status.slice(1)}
-                </Text>
-              </View>
-            </View>
 
-            <View style={styles.sheetDetails}>
-              <DetailRow icon="resize-outline" label="Size" value={`${selectedStall.length}m × ${selectedStall.breadth}m (${selectedStall.area} sqm)`} />
-              <DetailRow icon="layers-outline" label="Space Type" value={selectedStall.spaceType} />
-              <DetailRow icon="cash-outline" label="Base Price" value={`₹${selectedStall.basePrice.toLocaleString('en-IN')}`} />
-              <DetailRow icon="receipt-outline" label="GST (18%)" value={`₹${selectedStall.gstAmount.toLocaleString('en-IN')}`} />
-              <DetailRow icon="pricetag-outline" label="Total Price" value={`₹${selectedStall.totalPrice.toLocaleString('en-IN')}`} highlight />
-              {selectedStall.features.length > 0 && (
-                <View style={styles.featuresRow}>
-                  {selectedStall.features.map((f) => (
-                    <View key={f} style={styles.featureChip}>
-                      <Text style={styles.featureChipText}>{f}</Text>
+              <ScrollView
+                style={styles.sheetScroll}
+                contentContainerStyle={styles.sheetScrollContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.sheetDetails}>
+                  <DetailRow icon="resize-outline" label="Size" value={`${selectedStall.length}m × ${selectedStall.breadth}m (${selectedStall.area} sqm)`} />
+                  <DetailRow icon="layers-outline" label="Space Type" value={selectedStall.spaceType} />
+                  <DetailRow icon="cash-outline" label="Base Price" value={`₹${selectedStall.basePrice.toLocaleString('en-IN')}`} />
+                  <DetailRow icon="receipt-outline" label="GST (18%)" value={`₹${selectedStall.gstAmount.toLocaleString('en-IN')}`} />
+                  <DetailRow icon="pricetag-outline" label="Total Price" value={`₹${selectedStall.totalPrice.toLocaleString('en-IN')}`} highlight />
+                  {selectedStall.features.length > 0 && (
+                    <View style={styles.featuresRow}>
+                      {selectedStall.features.map((f) => (
+                        <View key={f} style={styles.featureChip}>
+                          <Text style={styles.featureChipText}>{f}</Text>
+                        </View>
+                      ))}
                     </View>
-                  ))}
+                  )}
+                </View>
+
+                <View style={styles.productDetailsSection}>
+                  <Text style={styles.productSectionTitle}>Product Details For This Stall</Text>
+                  <Text style={styles.productSectionSubtitle}>
+                    These details will be attached to this booking request only.
+                  </Text>
+
+                  <Text style={styles.inputLabel}>Product Segments</Text>
+                  <View style={styles.segmentWrap}>
+                    {PRODUCT_SEGMENTS.map((segment) => {
+                      const active = selectedSegments.includes(segment);
+                      return (
+                        <TouchableOpacity
+                          key={segment}
+                          style={[styles.segmentChip, active && styles.segmentChipActive]}
+                          onPress={() => toggleSegment(segment)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.segmentChipText, active && styles.segmentChipTextActive]}>
+                            {segment}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.inputLabel}>Categories</Text>
+                  <TextInput
+                    style={styles.sheetInput}
+                    placeholder="e.g. PET Bottles, Packaging Films"
+                    placeholderTextColor={Colors.placeholder}
+                    value={categories}
+                    onChangeText={setCategories}
+                  />
+
+                  <Text style={styles.inputLabel}>Preferred Space Type</Text>
+                  <View style={styles.spaceTypeWrap}>
+                    {SPACE_TYPES.map((type) => {
+                      const active = preferredSpaceType === type;
+                      return (
+                        <TouchableOpacity
+                          key={type}
+                          style={[styles.spaceTypeChip, active && styles.spaceTypeChipActive]}
+                          onPress={() => setPreferredSpaceType(type)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.spaceTypeChipText, active && styles.spaceTypeChipTextActive]}>{type}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.inputLabel}>Discount Code (Optional)</Text>
+                  <TextInput
+                    style={styles.sheetInput}
+                    placeholder="e.g. PI26EARLY"
+                    placeholderTextColor={Colors.placeholder}
+                    value={discountCode}
+                    onChangeText={setDiscountCode}
+                    autoCapitalize="characters"
+                    maxLength={30}
+                  />
+
+                </View>
+              </ScrollView>
+
+              {selectedStall.status === 'available' && (
+                <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed}>
+                  <Text style={styles.proceedBtnText}>Proceed to Booking</Text>
+                  <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+                </TouchableOpacity>
+              )}
+
+              {selectedStall.status === 'reserved' && (
+                <View style={styles.notAvailableMsg}>
+                  <Ionicons name="time-outline" size={18} color={Colors.reserved} />
+                  <Text style={styles.notAvailableMsgText}>
+                    This stall is currently being reserved by another exhibitor.
+                  </Text>
                 </View>
               )}
-            </View>
-
-            <View style={styles.productDetailsSection}>
-              <Text style={styles.productSectionTitle}>Product Details For This Stall</Text>
-              <Text style={styles.productSectionSubtitle}>
-                These details will be attached to this booking request only.
-              </Text>
-
-              <Text style={styles.inputLabel}>Product Segments</Text>
-              <View style={styles.segmentWrap}>
-                {PRODUCT_SEGMENTS.map((segment) => {
-                  const active = selectedSegments.includes(segment);
-                  return (
-                    <TouchableOpacity
-                      key={segment}
-                      style={[styles.segmentChip, active && styles.segmentChipActive]}
-                      onPress={() => toggleSegment(segment)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.segmentChipText, active && styles.segmentChipTextActive]}>
-                        {segment}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.inputLabel}>Categories</Text>
-              <TextInput
-                style={styles.sheetInput}
-                placeholder="e.g. PET Bottles, Packaging Films"
-                placeholderTextColor={Colors.placeholder}
-                value={categories}
-                onChangeText={setCategories}
-              />
-
-              <Text style={styles.inputLabel}>Machinery Description</Text>
-              <TextInput
-                style={[styles.sheetInput, styles.sheetInputMultiline]}
-                placeholder="Optional"
-                placeholderTextColor={Colors.placeholder}
-                value={machineryDescription}
-                onChangeText={setMachineryDescription}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-
-              <Text style={styles.inputLabel}>Raw Material Description</Text>
-              <TextInput
-                style={[styles.sheetInput, styles.sheetInputMultiline]}
-                placeholder="Optional"
-                placeholderTextColor={Colors.placeholder}
-                value={rawMaterialDescription}
-                onChangeText={setRawMaterialDescription}
-                multiline
-                numberOfLines={3}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {selectedStall.status === 'available' && (
-              <TouchableOpacity style={styles.proceedBtn} onPress={handleProceed}>
-                <Text style={styles.proceedBtnText}>Proceed to Booking</Text>
-                <Ionicons name="arrow-forward" size={18} color={Colors.white} />
-              </TouchableOpacity>
-            )}
-
-            {selectedStall.status === 'reserved' && (
-              <View style={styles.notAvailableMsg}>
-                <Ionicons name="time-outline" size={18} color={Colors.reserved} />
-                <Text style={styles.notAvailableMsgText}>
-                  This stall is currently being reserved by another exhibitor.
-                </Text>
-              </View>
-            )}
+            </KeyboardAvoidingView>
           </Animated.View>
         </>
       )}
@@ -771,11 +820,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    height: height * 0.86,
     backgroundColor: Colors.white,
     borderTopLeftRadius: Radius['2xl'],
     borderTopRightRadius: Radius['2xl'],
     padding: Spacing.base,
-    paddingBottom: Spacing['3xl'],
+    paddingBottom: Spacing.md,
     ...Shadow.lg,
   },
   sheetHandle: {
@@ -808,6 +858,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   statusBadgeText: { fontSize: Typography.size.xs, fontWeight: '700' },
+  sheetScroll: {
+    flex: 1,
+  },
+  sheetScrollContent: {
+    paddingBottom: Spacing.base,
+  },
   sheetDetails: {
     gap: Spacing.sm,
     marginBottom: Spacing.base,
@@ -914,6 +970,32 @@ const styles = StyleSheet.create({
   },
   sheetInputMultiline: {
     minHeight: 80,
+  },
+  spaceTypeWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  spaceTypeChip: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceVariant,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+  },
+  spaceTypeChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+  },
+  spaceTypeChipText: {
+    fontSize: Typography.size.xs,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+  spaceTypeChipTextActive: {
+    color: Colors.white,
   },
 
   proceedBtn: {

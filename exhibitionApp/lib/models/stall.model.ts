@@ -8,6 +8,7 @@ export interface StallModel {
   stallCode: string;
   hallId: string;
   hallName: string;
+  ratePerSqm?: number;
   length: number;
   breadth: number;
   area: number;
@@ -26,14 +27,14 @@ export interface StallModel {
   updatedAt: Timestamp;
 }
 
-export function calculateStallPrice(length: number, breadth: number): {
+export function calculateStallPrice(length: number, breadth: number, ratePerSqm = 7500): {
   area: number;
   basePrice: number;
   gstAmount: number;
   totalPrice: number;
 } {
   const area = length * breadth;
-  const basePrice = area * 7500;
+  const basePrice = area * ratePerSqm;
   const gstAmount = Math.round(basePrice * 0.18);
   const totalPrice = basePrice + gstAmount;
   return { area, basePrice, gstAmount, totalPrice };

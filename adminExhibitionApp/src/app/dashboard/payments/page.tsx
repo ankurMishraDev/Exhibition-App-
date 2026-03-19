@@ -85,7 +85,8 @@ export default function PaymentsPage() {
   const totalOutstanding = totalRevenue - totalCollected;
 
   function openRecordPayment(row: PaymentRow) {
-    const remaining = row.payment ? row.payment.remainingAmount : row.booking.totalAmount || 0;
+    const effectiveTotal = (row.booking.finalAmount ?? row.booking.totalAmount) || 0;
+    const remaining = row.payment ? row.payment.remainingAmount : effectiveTotal;
     setRecordTarget(row);
     setAmount(String(remaining));
     setPaymentDate(new Date().toISOString().slice(0, 10));
@@ -129,6 +130,8 @@ export default function PaymentsPage() {
     setSaving(true);
     try {
       const { booking, payment } = recordTarget;
+      let effectiveTotal = (booking.finalAmount ?? booking.totalAmount) || 0;
+
       const screenshotUrl = await uploadScreenshot(booking.id);
       const record: PaymentRecord = {
         amount: num,
@@ -142,7 +145,12 @@ export default function PaymentsPage() {
 
       let updatedPayment: Payment;
       if (!payment) {
-        const total = booking.totalAmount || 0;
+        const total = effectiveTotal;
+        if (num > total) {
+          toast.error('Payment amount cannot be greater than final payable amount.');
+          setSaving(false);
+          return;
+        }
         const id = await createPaymentRecord({
           bookingId: booking.id,
           exhibitorId: booking.exhibitorId,
@@ -256,7 +264,7 @@ export default function PaymentsPage() {
                 const status = getPaymentStatus(row);
                 const { booking, payment } = row;
                 const paid = payment?.paidAmount ?? 0;
-                const remaining = payment ? payment.remainingAmount : (booking.totalAmount || 0);
+                const remaining = payment ? payment.remainingAmount : ((booking.finalAmount ?? booking.totalAmount) || 0);
                 return (
                   <tr
                     key={booking.id}
@@ -304,8 +312,11 @@ export default function PaymentsPage() {
           <div style={{ padding: '12px 14px', background: '#F9FAFB', borderRadius: 10, marginBottom: '1.25rem', fontSize: 13 }}>
             <div style={{ fontWeight: 700, color: '#1A1A2E', marginBottom: 4 }}>{recordTarget.booking.companyName} — {recordTarget.booking.stallCode}</div>
             <div style={{ color: '#6B7280' }}>
-              Total: <strong>{formatCurrency(recordTarget.booking.totalAmount || 0)}</strong> ·
-              Remaining: <strong style={{ color: '#DC2626' }}>{formatCurrency(recordTarget.payment ? recordTarget.payment.remainingAmount : (recordTarget.booking.totalAmount || 0))}</strong>
+              Total: <strong>{formatCurrency(recordTarget.booking.totalAmount || 0)}</strong>
+              {recordTarget.booking.finalAmount && recordTarget.booking.finalAmount !== recordTarget.booking.totalAmount ? (
+                <> · Final: <strong>{formatCurrency(recordTarget.booking.finalAmount)}</strong></>
+              ) : null}
+              {' '}· Remaining: <strong style={{ color: '#DC2626' }}>{formatCurrency(recordTarget.payment ? recordTarget.payment.remainingAmount : (recordTarget.booking.finalAmount ?? (recordTarget.booking.totalAmount || 0)))}</strong>
             </div>
           </div>
 
@@ -313,7 +324,7 @@ export default function PaymentsPage() {
             <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" style={inputStyle} placeholder="Enter amount" autoFocus />
           </FormGroup>
           <FormGroup label="Payment Date" required>
-            <input value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} type="date" style={inputStyle} />
+            <input title='Payment Date' value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} type="date" style={inputStyle} />
           </FormGroup>
           <FormGroup label="Payment Method">
             <select value={method} title='Payment Options' onChange={(e) => setMethod(e.target.value)} style={inputStyle}>

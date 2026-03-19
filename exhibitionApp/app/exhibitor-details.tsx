@@ -28,13 +28,23 @@ import {
 } from '@/lib/services/exhibitorService';
 import { ExhibitorModel } from '@/lib/models/exhibitor.model';
 
+function hasLetters(input: string): boolean {
+  return /[A-Za-z]/.test(input);
+}
+
+function normalizeDigits(input: string): string {
+  return input.replace(/\D/g, '');
+}
+
 export default function ExhibitorDetailsScreen() {
   const router = useRouter();
-  const { stallId, hallId, bookingContext, productDetails } = useLocalSearchParams<{
+  const { stallId, hallId, bookingContext, productDetails, preferredSpaceType, discountCode } = useLocalSearchParams<{
     stallId?: string;
     hallId?: string;
     bookingContext?: string;
     productDetails?: string;
+    preferredSpaceType?: string;
+    discountCode?: string;
   }>();
   const { user, userModel } = useAuth();
   const inBookingFlow = bookingContext === 'stall-booking' && Boolean(stallId) && Boolean(hallId);
@@ -148,11 +158,32 @@ export default function ExhibitorDetailsScreen() {
   }
 
   async function handleSubmit() {
-    if (!contactPerson.trim()) return Alert.alert('Required', 'Please enter contact person name.');
-    if (!companyName.trim()) return Alert.alert('Required', 'Please enter company name.');
+    const contactName = contactPerson.trim();
+    const company = companyName.trim();
+    const mobileDigits = normalizeDigits(mobile);
+    const telephoneDigits = normalizeDigits(telephone);
+    const faxDigits = normalizeDigits(fax);
+    const cityName = city.trim();
+    const stateName = state.trim();
+    const pinDigits = normalizeDigits(pincode);
+
+    if (!contactName) return Alert.alert('Required', 'Please enter contact person name.');
+    if (!hasLetters(contactName)) return Alert.alert('Invalid Input', 'Contact person name must be text, not numbers only.');
+    if (!company) return Alert.alert('Required', 'Please enter company name.');
+    if (!hasLetters(company)) return Alert.alert('Invalid Input', 'Company name must contain text.');
     if (!mobile.trim()) return Alert.alert('Required', 'Please enter mobile number.');
+    if (mobileDigits.length !== 10) return Alert.alert('Invalid Mobile', 'Mobile number must be exactly 10 digits.');
+    if (telephone.trim() && (telephoneDigits.length < 8 || telephoneDigits.length > 12)) {
+      return Alert.alert('Invalid Telephone', 'Telephone number should be between 8 and 12 digits.');
+    }
+    if (fax.trim() && (faxDigits.length < 8 || faxDigits.length > 12)) {
+      return Alert.alert('Invalid Fax', 'Fax number should be between 8 and 12 digits.');
+    }
     if (!address.trim()) return Alert.alert('Required', 'Please enter address.');
-    if (!city.trim()) return Alert.alert('Required', 'Please enter city.');
+    if (!cityName) return Alert.alert('Required', 'Please enter city.');
+    if (!hasLetters(cityName)) return Alert.alert('Invalid City', 'City name must be text.');
+    if (stateName && !hasLetters(stateName)) return Alert.alert('Invalid State', 'State should contain text.');
+    if (pinDigits && pinDigits.length !== 6) return Alert.alert('Invalid PIN', 'PIN code must be 6 digits.');
     if (companyProfile.length > 0 && companyProfile.split(' ').length > 100) {
       return Alert.alert('Too long', 'Company profile must be within 100 words.');
     }
@@ -175,20 +206,20 @@ export default function ExhibitorDetailsScreen() {
         const profileData = {
           userId: user.uid,
           contactPrefix: prefix,
-          contactPerson: contactPerson.trim(),
+          contactPerson: contactName,
           chiefExecutiveName: chiefExecutiveName.trim(),
-          companyName: companyName.trim(),
+          companyName: company,
           email: email.trim(),
-          mobile: mobile.trim(),
-          telephone: telephone.trim(),
-          fax: fax.trim(),
+          mobile: mobileDigits,
+          telephone: telephoneDigits,
+          fax: faxDigits,
           gst: gst.trim(),
           pan: pan.trim(),
           tan: tan.trim(),
           address: address.trim(),
-          city: city.trim(),
-          state: state.trim(),
-          pincode: pincode.trim(),
+          city: cityName,
+          state: stateName,
+          pincode: pinDigits,
           country,
           website: website.trim(),
           companyProfile: companyProfile.trim(),
@@ -210,6 +241,8 @@ export default function ExhibitorDetailsScreen() {
             hallId,
             bookingContext: 'stall-booking',
             productDetails: productDetails || '',
+            preferredSpaceType: preferredSpaceType || '',
+            discountCode: discountCode || '',
           },
         });
       } else {
@@ -262,6 +295,8 @@ export default function ExhibitorDetailsScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* Info Banner */}
           <View style={styles.infoBanner}>

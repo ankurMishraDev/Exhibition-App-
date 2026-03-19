@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { Colors } from '@/constants/theme';
+import { useKeepAwake } from 'expo-keep-awake';
 
 function AuthGate() {
   const { user, loading } = useAuth();
@@ -48,14 +49,14 @@ function AuthGate() {
   );
 }
 
-import { useKeepAwake } from 'expo-keep-awake';
-
 export default function RootLayout() {
-  useKeepAwake();
+  useKeepAwake('plastpack-keep-awake');
   return (
     <AuthProvider>
-      <StatusBar style="auto" />
-      <AuthGate />
+      <StatusBar style="dark" backgroundColor={Colors.white} translucent={false} />
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+        <AuthGate />
+      </View>
     </AuthProvider>
   );
 }

@@ -111,6 +111,7 @@ export default function DashboardPage() {
           <QuickAction href="/dashboard/halls" label="Manage Halls & Stalls" icon="🏛️" />
           <QuickAction href="/dashboard/exhibitors" label="View Exhibitors" icon="🏢" />
           <QuickAction href="/dashboard/payments" label="Record Payments" icon="💳" />
+          <QuickAction href="/dashboard/discounts" label="Generate Discount Codes" icon="🏷️" />
         </div>
       </div>
 
