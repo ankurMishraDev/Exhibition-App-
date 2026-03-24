@@ -1,61 +1,82 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
+  ActivityIndicator,
+  Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import { useAuth } from '@/hooks/useAuth';
+import { NotificationModel } from '@/lib/models/notification.model';
+import {
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  subscribeToExhibitorNotifications,
+} from '@/lib/services/notificationService';
 
-// Placeholder notifications — in V2 this will be driven by Firestore FCM
-const SAMPLE_NOTIFICATIONS = [
-  {
-    id: '1',
-    type: 'booking',
-    title: 'Booking Request Received',
-    body: 'Your booking request for stall A-12 has been received and is under review.',
-    time: '2 hours ago',
-    read: false,
-  },
-  {
-    id: '2',
-    type: 'approval',
-    title: 'Booking Approved!',
-    body: 'Congratulations! Your stall B-05 booking has been approved by the admin.',
-    time: '1 day ago',
-    read: true,
-  },
-  {
-    id: '3',
-    type: 'event',
-    title: 'PlastPack Event Update',
-    body: 'New halls have been added to PlastPack. Browse Hall G and Hall H for stall availability.',
-    time: '3 days ago',
-    read: true,
-  },
-  {
-    id: '4',
-    type: 'payment',
-    title: 'Payment Reminder',
-    body: 'A partial payment for stall C-03 is pending. Please contact us to arrange payment.',
-    time: '5 days ago',
-    read: true,
-  },
-];
+function formatRelativeTime(value: unknown): string {
+  if (!value || typeof value !== 'object' || typeof (value as { toDate?: unknown }).toDate !== 'function') {
+    return 'Now';
+  }
+  const date = (value as { toDate: () => Date }).toDate();
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.max(1, Math.floor(diffMs / 60000));
+
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
+  return date.toLocaleDateString('en-IN');
+}
 
 const NOTIFICATION_ICONS: Record<string, { name: string; color: string; bg: string }> = {
-  booking: { name: 'receipt-outline', color: Colors.primary, bg: Colors.primarySurface },
-  approval: { name: 'checkmark-circle-outline', color: Colors.available, bg: Colors.availableLight },
-  event: { name: 'calendar-outline', color: '#7C3AED', bg: '#EDE9FE' },
-  payment: { name: 'card-outline', color: '#D97706', bg: '#FEF3C7' },
+  booking_approved: { name: 'checkmark-circle-outline', color: Colors.available, bg: Colors.availableLight },
+  payment_updated: { name: 'card-outline', color: '#D97706', bg: '#FEF3C7' },
+  generic: { name: 'notifications-outline', color: Colors.primary, bg: Colors.primarySurface },
 };
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<NotificationModel[]>([]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setLoading(false);
+      setNotifications([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToExhibitorNotifications(user.uid, (data) => {
+      setNotifications(data);
+      setLoading(false);
+    }, (message) => {
+      setLoading(false);
+      Alert.alert('Notifications Error', message);
+    });
+
+    return unsubscribe;
+  }, [user?.uid]);
+
+  const unreadCount = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
+
+  async function handleRead(notification: NotificationModel) {
+    if (!notification.read) {
+      await markNotificationAsRead(notification.id);
+    }
+  }
+
+  async function handleMarkAllRead() {
+    await markAllNotificationsAsRead(notifications);
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -64,34 +85,51 @@ export default function NotificationsScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
-        <View style={{ width: 38 }} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Notifications</Text>
+          {unreadCount > 0 ? <Text style={styles.unreadCount}>{unreadCount} new</Text> : null}
+        </View>
+        <TouchableOpacity style={styles.markAllBtn} onPress={handleMarkAllRead} disabled={unreadCount === 0}>
+          <Text style={[styles.markAllBtnText, unreadCount === 0 && styles.markAllBtnTextDisabled]}>Mark all</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <Text style={styles.sectionLabel}>Recent</Text>
+        <Text style={styles.sectionLabel}>Recent Updates</Text>
 
-        {SAMPLE_NOTIFICATIONS.map((n) => {
-          const iconStyle = NOTIFICATION_ICONS[n.type] || NOTIFICATION_ICONS.event;
-          return (
-            <View key={n.id} style={[styles.card, !n.read && styles.cardUnread]}>
-              {!n.read && <View style={styles.unreadDot} />}
-              <View style={[styles.iconWrap, { backgroundColor: iconStyle.bg }]}>
-                <Ionicons name={iconStyle.name as never} size={20} color={iconStyle.color} />
-              </View>
-              <View style={styles.textWrap}>
-                <Text style={[styles.title, !n.read && styles.titleUnread]}>{n.title}</Text>
-                <Text style={styles.body}>{n.body}</Text>
-                <Text style={styles.time}>{n.time}</Text>
-              </View>
-            </View>
-          );
-        })}
+        {loading ? (
+          <View style={styles.centerState}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : notifications.length === 0 ? (
+          <View style={styles.centerState}>
+            <Ionicons name="notifications-off-outline" size={26} color={Colors.textMuted} />
+            <Text style={styles.emptyTitle}>No notifications yet</Text>
+            <Text style={styles.emptyBody}>You will receive updates when bookings are approved and payments are updated.</Text>
+          </View>
+        ) : (
+          notifications.map((n) => {
+            const iconStyle = NOTIFICATION_ICONS[n.type] || NOTIFICATION_ICONS.generic;
+            return (
+              <TouchableOpacity key={n.id} style={[styles.card, !n.read && styles.cardUnread]} onPress={() => void handleRead(n)} activeOpacity={0.85}>
+                {!n.read && <View style={styles.unreadDot} />}
+                <View style={[styles.iconWrap, { backgroundColor: iconStyle.bg }]}>
+                  <Ionicons name={iconStyle.name as never} size={20} color={iconStyle.color} />
+                </View>
+                <View style={styles.textWrap}>
+                  <Text style={[styles.title, !n.read && styles.titleUnread]}>{n.title}</Text>
+                  <Text style={styles.body}>{n.body}</Text>
+                  <Text style={styles.time}>{formatRelativeTime(n.createdAt)}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
 
         <View style={styles.fcmNote}>
           <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
           <Text style={styles.fcmNoteText}>
-            Push notifications will be enabled in a future update. You&apos;ll receive real-time alerts for bookings, approvals, and event announcements.
+            These notifications are now live from admin actions and update automatically.
           </Text>
         </View>
       </ScrollView>
@@ -119,10 +157,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
   headerTitle: {
     fontSize: Typography.size.lg,
     fontWeight: '700',
     color: Colors.textPrimary,
+  },
+  unreadCount: {
+    fontSize: Typography.size.xs,
+    color: Colors.primary,
+    marginTop: 2,
+    fontWeight: '700',
+  },
+  markAllBtn: {
+    minWidth: 56,
+    height: 34,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+  },
+  markAllBtnText: {
+    fontSize: Typography.size.xs,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  markAllBtnTextDisabled: {
+    color: Colors.textMuted,
   },
   content: { padding: Spacing.base },
   sectionLabel: {
@@ -132,6 +199,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: Spacing.md,
+  },
+  centerState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing['3xl'],
+    gap: Spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: Typography.size.base,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  emptyBody: {
+    fontSize: Typography.size.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    maxWidth: 280,
+    lineHeight: 20,
   },
   card: {
     flexDirection: 'row',

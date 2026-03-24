@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createDiscount,
   getAllDiscounts,
@@ -19,7 +19,7 @@ function generateCouponCode(): string {
 }
 
 export default function DiscountsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -31,8 +31,14 @@ export default function DiscountsPage() {
   const [value, setValue] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [targetExhibitorId, setTargetExhibitorId] = useState('');
+  const sampleCode = 'TEST-PLAST-10';
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const [discountData, exhibitorData] = await Promise.all([
@@ -41,14 +47,18 @@ export default function DiscountsPage() {
       ]);
       setDiscounts(discountData);
       setExhibitors(exhibitorData);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load discounts';
+      toast.error(message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
 
   useEffect(() => {
+    if (authLoading) return;
     void loadData();
-  }, []);
+  }, [authLoading, loadData]);
 
   const selectedExhibitor = useMemo(
     () => exhibitors.find((item) => item.id === targetExhibitorId) ?? null,
@@ -56,6 +66,11 @@ export default function DiscountsPage() {
   );
 
   async function handleCreate() {
+    if (!user) {
+      toast.error('Please login first to create a discount code.');
+      return;
+    }
+
     const numericValue = parseFloat(value);
 
     if (!code.trim()) {
@@ -122,11 +137,38 @@ export default function DiscountsPage() {
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} style={inputStyle} placeholder="e.g. PP26-AB123" />
             <button onClick={() => setCode(generateCouponCode())} style={secondaryBtn}>Generate</button>
+            <button
+              onClick={() => {
+                void navigator.clipboard.writeText(code.trim().toUpperCase());
+                toast.success('Discount code copied');
+              }}
+              style={secondaryBtn}
+              type="button"
+            >
+              Copy
+            </button>
+            <button
+              onClick={() => {
+                setCode(sampleCode);
+                setType('percentage');
+                setValue('10');
+                setExpiryDate('');
+                setTargetExhibitorId('');
+                toast.success('Sample discount code loaded');
+              }}
+              style={secondaryBtn}
+              type="button"
+            >
+              Use Sample
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 6 }}>
+            Sample for testing: <strong>{sampleCode}</strong> (10% off, one-time)
           </div>
         </FormGroup>
 
         <FormGroup label="Discount Type" required>
-          <select value={type} onChange={(e) => setType(e.target.value as DiscountType)} style={inputStyle}>
+          <select title="Discount Type" value={type} onChange={(e) => setType(e.target.value as DiscountType)} style={inputStyle}>
             <option value="percentage">Percentage (%)</option>
             <option value="flat">Flat (INR)</option>
           </select>
@@ -137,12 +179,12 @@ export default function DiscountsPage() {
         </FormGroup>
 
         <FormGroup label="Expiry Date (Optional)">
-          <input value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} type="date" style={inputStyle} />
+          <input title="Expiry Date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} type="date" style={inputStyle} />
         </FormGroup>
 
         <div style={{ gridColumn: '1 / -1' }}>
           <FormGroup label="Target Exhibitor (Optional)">
-            <select value={targetExhibitorId} onChange={(e) => setTargetExhibitorId(e.target.value)} style={inputStyle}>
+            <select title="Target Exhibitor" value={targetExhibitorId} onChange={(e) => setTargetExhibitorId(e.target.value)} style={inputStyle}>
               <option value="">Any exhibitor</option>
               {exhibitors.map((exhibitor) => (
                 <option key={exhibitor.id} value={exhibitor.id}>

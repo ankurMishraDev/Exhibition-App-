@@ -177,6 +177,29 @@ export interface PaymentRecord {
   recordedBy: string;
 }
 
+async function createExhibitorNotification(params: {
+  exhibitorId: string;
+  type: 'booking_approved' | 'payment_updated';
+  title: string;
+  body: string;
+  bookingId?: string;
+  stallId?: string;
+  stallCode?: string;
+}): Promise<void> {
+  await addDoc(collection(db, 'notifications'), {
+    exhibitorId: params.exhibitorId,
+    type: params.type,
+    title: params.title,
+    body: params.body,
+    bookingId: params.bookingId,
+    stallId: params.stallId,
+    stallCode: params.stallCode,
+    read: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
 // ─── Halls ────────────────────────────────────────────────────────────────────
 
 export async function getHalls(): Promise<Hall[]> {
@@ -252,6 +275,9 @@ export async function approveBooking(
   notes?: string
 ): Promise<void> {
   const ts = serverTimestamp();
+  const bookingSnap = await getDoc(doc(db, 'bookings', bookingId));
+  const booking = bookingSnap.exists() ? ({ id: bookingSnap.id, ...bookingSnap.data() } as Booking) : null;
+
   await updateDoc(doc(db, 'bookings', bookingId), {
     status: 'approved',
     adminNotes: notes || '',
@@ -264,6 +290,18 @@ export async function approveBooking(
     bookingId,
     updatedAt: ts,
   });
+
+  if (booking?.exhibitorId) {
+    await createExhibitorNotification({
+      exhibitorId: booking.exhibitorId,
+      type: 'booking_approved',
+      title: 'Booking Approved',
+      body: `Your booking for stall ${booking.stallCode} has been approved.${notes ? ` Note: ${notes}` : ''}`,
+      bookingId,
+      stallId,
+      stallCode: booking.stallCode,
+    });
+  }
 }
 
 export async function rejectBooking(
@@ -322,6 +360,16 @@ export async function addPaymentRecord(
       paymentRecords: [...existing.paymentRecords, record],
       updatedAt: serverTimestamp(),
     });
+
+    await createExhibitorNotification({
+      exhibitorId: existing.exhibitorId,
+      type: 'payment_updated',
+      title: 'Payment Updated',
+      body: `Payment of INR ${Math.round(record.amount).toLocaleString('en-IN')} received for stall ${existing.stallCode}. Remaining amount: INR ${Math.max(0, existing.totalAmount - newPaid).toLocaleString('en-IN')}.`,
+      bookingId,
+      stallId: existing.stallId,
+      stallCode: existing.stallCode,
+    });
   }
 }
 
@@ -331,6 +379,17 @@ export async function createPaymentRecord(data: Omit<Payment, 'id' | 'createdAt'
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  await createExhibitorNotification({
+    exhibitorId: data.exhibitorId,
+    type: 'payment_updated',
+    title: 'Payment Updated',
+    body: `Payment of INR ${Math.round(data.paidAmount).toLocaleString('en-IN')} recorded for stall ${data.stallCode}. Remaining amount: INR ${Math.max(0, data.remainingAmount).toLocaleString('en-IN')}.`,
+    bookingId: data.bookingId,
+    stallId: data.stallId,
+    stallCode: data.stallCode,
+  });
+
   return ref.id;
 }
 
